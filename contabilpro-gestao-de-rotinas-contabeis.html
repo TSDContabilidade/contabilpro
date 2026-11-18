@@ -1,0 +1,2000 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContábilPro - Gestão de Rotinas Contábeis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1e3a5f',
+            secondary: '#2563eb',
+            accent: '#f59e0b',
+            success: '#10b981',
+            danger: '#ef4444',
+            warning: '#f59e0b'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    .sidebar-item { transition: all 0.2s; }
+    .sidebar-item:hover, .sidebar-item.active { background: rgba(255,255,255,0.12); }
+    .kanban-column { min-height: 450px; max-height: calc(100vh - 220px); overflow-y: auto; }
+    .task-card { transition: transform 0.2s, box-shadow 0.2s; cursor: grab; }
+    .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.12); }
+    .task-card.dragging { opacity: 0.5; cursor: grabbing; }
+    .modal { display: none; }
+    .modal.active { display: flex; }
+    .checkbox-custom { appearance: none; width: 18px; height: 18px; border: 2px solid #d1d5db; border-radius: 4px; cursor: pointer; position: relative; flex-shrink: 0; }
+    .checkbox-custom:checked { background: #2563eb; border-color: #2563eb; }
+    .checkbox-custom:checked::after { content: '✓'; color: white; position: absolute; top: -3px; left: 2px; font-size: 12px; }
+    .progress-bar { transition: width 0.3s ease; }
+    .calendar-day { min-height: 110px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<div class="flex h-screen overflow-hidden">
+  <!-- Sidebar -->
+  <aside class="w-64 bg-primary text-white flex flex-col shadow-xl z-20">
+    <div class="p-5 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center">
+          <i class="fas fa-balance-scale text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">ContábilPro</h1>
+          <p class="text-xs text-slate-300">Rotinas Contábeis</p>
+        </div>
+      </div>
+    </div>
+    
+    <nav class="flex-1 overflow-y-auto py-3">
+      <div class="px-4 mb-2 text-xs uppercase text-slate-400 font-semibold">Menu</div>
+      <a href="#" onclick="navigate('dashboard')" id="nav-dashboard" class="sidebar-item active flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-chart-pie w-5"></i> Dashboard
+      </a>
+      <a href="#" onclick="navigate('processos')" id="nav-processos" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-list-check w-5"></i> Processos
+      </a>
+      <a href="#" onclick="navigate('kanban')" id="nav-kanban" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-columns w-5"></i> Kanban
+      </a>
+      <a href="#" onclick="navigate('calendario')" id="nav-calendario" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-calendar-alt w-5"></i> Calendário
+      </a>
+      <a href="#" onclick="navigate('empresas')" id="nav-empresas" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-building w-5"></i> Empresas
+      </a>
+      <a href="#" onclick="navigate('equipe')" id="nav-equipe" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-users w-5"></i> Equipe
+      </a>
+      <a href="#" onclick="navigate('honorarios')" id="nav-honorarios" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2">
+        <i class="fas fa-coins w-5"></i> Honorários
+      </a>
+      
+      <div class="px-4 mt-5 mb-2 text-xs uppercase text-slate-400 font-semibold">Macros</div>
+      <div id="macros-menu" class="space-y-0.5"></div>
+    </nav>
+    
+    <div class="p-4 border-t border-white/10">
+      <button onclick="openLembretes()" class="w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg hover:bg-white/10 transition mb-2">
+        <i class="fas fa-bell w-5"></i> Lembretes
+        <span id="lembretes-badge" class="ml-auto bg-danger text-white text-xs px-2 py-0.5 rounded-full hidden">0</span>
+      </button>
+      <button onclick="openDataModal()" class="w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg hover:bg-white/10 transition">
+        <i class="fas fa-database w-5"></i> Dados
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+      <div>
+        <h2 id="page-title" class="text-2xl font-bold text-slate-800">Dashboard</h2>
+        <p id="page-subtitle" class="text-sm text-slate-500">Visão geral das rotinas do escritório</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="openTaskModal()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition shadow-lg shadow-blue-500/30">
+          <i class="fas fa-plus mr-2"></i>Nova Tarefa
+        </button>
+      </div>
+    </header>
+
+    <div id="content" class="flex-1 overflow-y-auto p-6 fade-in">
+      <!-- Views will be injected here -->
+    </div>
+  </main>
+</div>
+
+<!-- Task Modal -->
+<div id="task-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
+      <h3 id="task-modal-title" class="text-xl font-bold">Nova Tarefa</h3>
+      <button onclick="closeModal('task')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="task-form" onsubmit="saveTask(event)" class="p-6 space-y-4">
+      <input type="hidden" id="task-id">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Título <span class="text-danger">*</span></label>
+          <input type="text" id="task-title" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Descrição</label>
+          <textarea id="task-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Macro <span class="text-danger">*</span></label>
+          <select id="task-macro" onchange="updateSubprocessosOptions()" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Subgrupo <span class="text-danger">*</span></label>
+          <select id="task-subprocesso" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Empresa</label>
+          <select id="task-cliente" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Responsável <span class="text-danger">*</span></label>
+          <select id="task-responsavel" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Data de Início <span class="text-danger">*</span></label>
+          <input type="date" id="task-start" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Data Fim / Prazo <span class="text-danger">*</span></label>
+          <input type="date" id="task-due" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Prioridade <span class="text-danger">*</span></label>
+          <select id="task-priority" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Baixa">Baixa</option>
+            <option value="Normal" selected>Normal</option>
+            <option value="Alta">Alta</option>
+            <option value="Urgente">Urgente</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Status <span class="text-danger">*</span></label>
+          <select id="task-status" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Não Iniciado">Não Iniciado</option>
+            <option value="Em Andamento">Em Andamento</option>
+            <option value="Aguardando Cliente">Aguardando Cliente</option>
+            <option value="Revisão">Revisão</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Recorrência</label>
+          <select id="task-recurrence" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Nenhuma">Nenhuma</option>
+            <option value="Mensal">Mensal</option>
+            <option value="Trimestral">Trimestral</option>
+            <option value="Anual">Anual</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo Societário</label>
+          <select id="task-tipo" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="LTDA">LTDA</option>
+            <option value="MEI">MEI</option>
+            <option value="Simples Nacional">Simples Nacional</option>
+            <option value="Lucro Presumido">Lucro Presumido</option>
+            <option value="Lucro Real">Lucro Real</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Observações</label>
+          <textarea id="task-observations" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></textarea>
+        </div>
+      </div>
+      
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <label class="block text-sm font-medium">Checklist</label>
+          <button type="button" onclick="addChecklistItem()" class="text-sm text-secondary hover:text-blue-700 font-medium">
+            <i class="fas fa-plus mr-1"></i>Adicionar item
+          </button>
+        </div>
+        <div id="task-checklist" class="space-y-2"></div>
+      </div>
+      
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('task')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Empresa Modal -->
+<div id="empresa-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 id="empresa-modal-title" class="text-xl font-bold">Nova Empresa</h3>
+      <button onclick="closeModal('empresa')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="empresa-form" onsubmit="saveEmpresa(event)" class="p-6 space-y-4">
+      <input type="hidden" id="empresa-id">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Razão Social <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-nome" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">CNPJ <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-cnpj" required placeholder="00.000.000/0000-00" maxlength="18" oninput="formatCNPJ(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo Societário <span class="text-danger">*</span></label>
+          <select id="empresa-tipo" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="LTDA">LTDA</option>
+            <option value="MEI">MEI</option>
+            <option value="Simples Nacional">Simples Nacional</option>
+            <option value="Lucro Presumido">Lucro Presumido</option>
+            <option value="Lucro Real">Lucro Real</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Endereço <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-endereco" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Responsável Legal <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-responsavel-legal" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Valor do Honorário (R$) <span class="text-danger">*</span></label>
+          <input type="number" id="empresa-honorario" required min="0" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('empresa')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Equipe Modal -->
+<div id="equipe-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 id="equipe-modal-title" class="text-xl font-bold">Novo Integrante</h3>
+      <button onclick="closeModal('equipe')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="equipe-form" onsubmit="saveEquipe(event)" class="p-6 space-y-4">
+      <input type="hidden" id="equipe-id">
+      <div>
+        <label class="block text-sm font-medium mb-1">Nome <span class="text-danger">*</span></label>
+        <input type="text" id="equipe-nome" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Telefone <span class="text-danger">*</span></label>
+        <input type="tel" id="equipe-telefone" required placeholder="(00) 00000-0000" maxlength="15" oninput="formatPhone(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">E-mail <span class="text-danger">*</span></label>
+        <input type="email" id="equipe-email" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('equipe')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Honorario Modal -->
+<div id="honorario-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Atualizar Honorário</h3>
+      <button onclick="closeModal('honorario')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="honorario-form" onsubmit="saveHonorario(event)" class="p-6 space-y-4">
+      <input type="hidden" id="honorario-empresa-id">
+      <div>
+        <label class="block text-sm font-medium mb-1">Empresa</label>
+        <input type="text" id="honorario-empresa-nome" readonly class="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Valor do Honorário (R$)</label>
+        <input type="number" id="honorario-valor" required min="0" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Status</label>
+        <select id="honorario-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+          <option value="Pago">Pago</option>
+          <option value="Pendente">Pendente</option>
+          <option value="Atrasado">Atrasado</option>
+        </select>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('honorario')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Lembretes Modal -->
+<div id="lembretes-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Lembretes Diários</h3>
+      <button onclick="closeModal('lembretes')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6">
+      <form onsubmit="addLembrete(event)" class="flex gap-2 mb-4">
+        <input type="text" id="lembrete-text" placeholder="Novo lembrete..." required class="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        <button type="submit" class="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-blue-700"><i class="fas fa-plus"></i></button>
+      </form>
+      <div id="lembretes-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Data Modal -->
+<div id="data-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Gerenciar Dados</h3>
+      <button onclick="closeModal('data')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p class="text-sm text-blue-800">
+          <i class="fas fa-info-circle mr-2"></i>
+          Quando executado fora do preview, os dados são salvos automaticamente no navegador. Aqui você pode exportar um backup ou importar dados anteriores.
+        </p>
+      </div>
+      <div>
+        <button onclick="exportData()" class="w-full px-4 py-3 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium mb-3">
+          <i class="fas fa-download mr-2"></i>Exportar dados (JSON)
+        </button>
+        <label class="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium cursor-pointer flex items-center justify-center">
+          <i class="fas fa-upload mr-2"></i>Importar dados (JSON)
+          <input type="file" id="import-file" accept=".json" onchange="importData(this)" class="hidden">
+        </label>
+      </div>
+      <div class="pt-4 border-t border-slate-200">
+        <button onclick="resetData()" class="w-full px-4 py-2 border border-danger text-danger hover:bg-red-50 rounded-lg font-medium">
+          <i class="fas fa-trash mr-2"></i>Restaurar dados iniciais
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+  <span id="toast-message"></span>
+</div>
+
+<script>
+// ============================================
+// DADOS E CONFIGURAÇÕES
+// ============================================
+const STORAGE_KEY = 'contabilpro_data_v1';
+
+const macros = [
+  { id: 1, nome: "Comercial / Captação", icone: "fa-handshake", cor: "bg-blue-500", desc: "Do primeiro contato ao contrato assinado" },
+  { id: 2, nome: "Onboarding do Cliente", icone: "fa-user-plus", cor: "bg-emerald-500", desc: "Cliente novo começa certo, sem documento faltando" },
+  { id: 3, nome: "Fiscal (rotina mensal)", icone: "fa-file-invoice-dollar", cor: "bg-purple-500", desc: "Guias e obrigações do mês no prazo" },
+  { id: 4, nome: "Depto. Pessoal (mensal)", icone: "fa-id-badge", cor: "bg-orange-500", desc: "Folha, eSocial e férias controlados" },
+  { id: 5, nome: "Contábil (mensal/trimestral)", icone: "fa-book", cor: "bg-indigo-500", desc: "Fechamento mensal e demonstrações" },
+  { id: 6, nome: "Obrigações Anuais", icone: "fa-calendar-check", cor: "bg-red-500", desc: "Entregas críticas do calendário" },
+  { id: 7, nome: "Societário / Legalização", icone: "fa-gavel", cor: "bg-teal-500", desc: "Abertura, alteração e baixa de CNPJ" },
+  { id: 8, nome: "Gestão Interna do Escritório", icone: "fa-cogs", cor: "bg-slate-600", desc: "Carteira, faturamento e cobrança" }
+];
+
+const subprocessos = {
+  1: ["1.1 Captação de leads e registro de origem", "1.2 Qualificação (regime, porte, funcionários)", "1.3 Proposta comercial e controle de status", "1.4 Contrato com checklist de cláusulas"],
+  2: ["2.1 Coleta de documentos de abertura", "2.2 Análise da situação cadastral (CNPJ)", "2.3 Definição do escopo de serviços", "2.4 Cadastro no sistema contábil (ERP)", "2.5 Protocolo de comunicação oficial", "2.6 Reunião de kickoff com cliente"],
+  3: ["3.1 Cobrança de documentos ao cliente", "3.2 Conferência e organização de NF-e", "3.3 Escrituração fiscal (SPED Fiscal)", "3.4 Apuração de tributos por regime", "3.5 Geração das guias e controle de envio", "3.6 Obrigações acessórias mensais", "3.7 Conferência de pagamentos das guias"],
+  4: ["4.1 Coleta de eventos variáveis do mês", "4.2 Processamento da folha de pagamento", "4.3 Envio ao eSocial (S-1200, S-1299)", "4.4 DCTFWeb e DARF previdenciária", "4.5 FGTS — GRRF / GFIP", "4.6 Admissões — checklist e eSocial S-2200", "4.7 Demissões — rescisão e S-2299", "4.8 Férias e 13º salário com controle de prazo"],
+  5: ["5.1 Lançamentos contábeis no livro razão", "5.2 Conciliação bancária", "5.3 Fechamento mensal e ajustes", "5.4 DRE, Balanço Patrimonial, Fluxo de Caixa", "5.5 SPED Contábil (ECD) — controle mensal", "5.6 ECF — Escrituração Contábil Fiscal"],
+  6: ["6.1 IRPF de sócios/funcionários — Abril", "6.2 DIRF — Fevereiro", "6.3 RAIS — Março/Abril", "6.4 ECD (SPED Contábil) — Junho", "6.5 ECF — Julho", "6.6 DEFIS (Simples Nacional) — Março", "6.7 Planejamento tributário — Out/Nov"],
+  7: ["7.1 Abertura de empresa — CNPJ, alvará, ISS", "7.2 Alteração contratual (sócios, endereço)", "7.3 Encerramento / Baixa de CNPJ", "7.4 Emissão de certidões (CND, FGTS)", "7.5 Regularização de pendências no CNPJ"],
+  8: ["8.1 Gestão da carteira de clientes", "8.2 Faturamento, NFS-e e régua de cobrança", "8.3 Calendário fiscal consolidado do escritório", "8.4 Gestão de equipe e carga por analista", "8.5 Atendimento ao cliente e controle de SLA", "8.6 Onboarding de novos colaboradores", "8.7 Honorários mensais (separado por cliente cadastrado)"]
+};
+
+let empresas = [];
+let equipe = [];
+let tarefas = [];
+let lembretes = [];
+let honorarios = [];
+
+let currentView = 'dashboard';
+let selectedMacro = null;
+let calendarDate = new Date();
+
+// ============================================
+// INICIALIZAÇÃO
+// ============================================
+function init() {
+  loadData();
+  renderMacrosMenu();
+  navigate('dashboard');
+  updateLembretesBadge();
+}
+
+function getInitialData() {
+  return {
+    empresas: [
+      { id: 1, nome: "Comércio Silva LTDA", cnpj: "12.345.678/0001-90", tipo: "Simples Nacional", endereco: "Rua das Flores, 123 - São Paulo/SP", responsavelLegal: "João Silva", honorario: 1200 },
+      { id: 2, nome: "TechSolutions ME", cnpj: "23.456.789/0001-01", tipo: "Lucro Presumido", endereco: "Av. Paulista, 1000 - São Paulo/SP", responsavelLegal: "Maria Tech", honorario: 2500 },
+      { id: 3, nome: "Construtora Horizonte LTDA", cnpj: "34.567.890/0001-12", tipo: "Lucro Real", endereco: "Rua do Horizonte, 456 - Belo Horizonte/MG", responsavelLegal: "Pedro Horizonte", honorario: 4500 },
+      { id: 4, nome: "Padaria Central MEI", cnpj: "45.678.901/0001-23", tipo: "MEI", endereco: "Rua do Pão, 78 - Curitiba/PR", responsavelLegal: "Ana Souza", honorario: 350 },
+      { id: 5, nome: "Advocacia Mendes", cnpj: "56.789.012/0001-34", tipo: "Simples Nacional", endereco: "Av. dos Advogados, 90 - Rio de Janeiro/RJ", responsavelLegal: "Carlos Mendes", honorario: 1800 }
+    ],
+    equipe: [
+      { id: 1, nome: "Ana Carolina", telefone: "(11) 98765-4321", email: "ana@escritorio.com.br" },
+      { id: 2, nome: "Bruno Lima", telefone: "(11) 98765-4322", email: "bruno@escritorio.com.br" },
+      { id: 3, nome: "Carla Mendes", telefone: "(11) 98765-4323", email: "carla@escritorio.com.br" },
+      { id: 4, nome: "Daniel Souza", telefone: "(11) 98765-4324", email: "daniel@escritorio.com.br" },
+      { id: 5, nome: "Tamyres", telefone: "(11) 98765-4325", email: "tamyres@escritorio.com.br" }
+    ],
+    tarefas: generateInitialTasks(),
+    lembretes: [
+      { id: 1, texto: "Revisar guias de ISS do mês", concluido: false },
+      { id: 2, texto: "Ligar para 3 prospects pendentes", concluido: false },
+      { id: 3, texto: "Atualizar calendário de obrigações anuais", concluido: true }
+    ],
+    honorarios: []
+  };
+}
+
+function generateInitialTasks() {
+  const baseTasks = [
+    { macro: 3, subprocesso: "3.1 Cobrança de documentos ao cliente", titulo: "Cobrança de documentos fiscais - Nov/2026", cliente: 1, responsavel: 1, start: "2026-11-01", due: "2026-11-10", priority: "Alta", status: "Concluído", recurrence: "Nenhuma", tipo: "Simples Nacional", observations: "", checklist: ["Enviar e-mail solicitando notas", "Confirmar recebimento", "Organizar na pasta do cliente"] },
+    { macro: 3, subprocesso: "3.3 Escrituração fiscal (SPED Fiscal)", titulo: "SPED Fiscal - Nov/2026", cliente: 2, responsavel: 1, start: "2026-11-05", due: "2026-11-20", priority: "Urgente", status: "Em Andamento", recurrence: "Mensal", tipo: "Lucro Presumido", observations: "", checklist: ["Importar notas fiscais", "Validar registros", "Transmitir no SPED"] },
+    { macro: 4, subprocesso: "4.2 Processamento da folha de pagamento", titulo: "Folha de pagamento - Nov/2026", cliente: 3, responsavel: 3, start: "2026-11-15", due: "2026-11-25", priority: "Alta", status: "Em Andamento", recurrence: "Mensal", tipo: "Lucro Real", observations: "", checklist: ["Coletar eventos variáveis", "Processar folha", "Enviar holerites para aprovação"] },
+    { macro: 6, subprocesso: "6.1 IRPF de sócios/funcionários — Abril", titulo: "Planejamento IRPF 2027", cliente: 2, responsavel: 2, start: "2026-11-01", due: "2026-12-15", priority: "Normal", status: "Não Iniciado", recurrence: "Anual", tipo: "Lucro Presumido", observations: "", checklist: ["Levantar rendimentos", "Verificar dependentes", "Agendar entrega"] },
+    { macro: 2, subprocesso: "2.1 Coleta de documentos de abertura", titulo: "Onboarding - Construtora Horizonte", cliente: 3, responsavel: 5, start: "2026-11-10", due: "2026-11-30", priority: "Alta", status: "Aguardando Cliente", recurrence: "Nenhuma", tipo: "Lucro Real", observations: "", checklist: ["Contrato social", "Comprovante de endereço", "Documentos dos sócios", "Certificado digital"] },
+    { macro: 5, subprocesso: "5.4 DRE, Balanço Patrimonial, Fluxo de Caixa", titulo: "Fechamento contábil Out/2026", cliente: 1, responsavel: 2, start: "2026-11-05", due: "2026-11-15", priority: "Alta", status: "Revisão", recurrence: "Mensal", tipo: "Simples Nacional", observations: "", checklist: ["Conciliar bancos", "Lançar ajustes", "Gerar DRE", "Gerar Balanço"] },
+    { macro: 1, subprocesso: "1.3 Proposta comercial e controle de status", titulo: "Proposta - Advogados Associados", cliente: null, responsavel: 4, start: "2026-11-15", due: "2026-11-22", priority: "Normal", status: "Em Andamento", recurrence: "Nenhuma", tipo: "Outro", observations: "", checklist: ["Elaborar proposta", "Enviar ao prospect", "Fazer follow-up"] },
+    { macro: 7, subprocesso: "7.2 Alteração contratual (sócios, endereço)", titulo: "Alteração contratual - TechSolutions", cliente: 2, responsavel: 5, start: "2026-11-12", due: "2026-11-28", priority: "Normal", status: "Não Iniciado", recurrence: "Nenhuma", tipo: "Lucro Presumido", observations: "", checklist: ["Nova ata de alteração", "Atualizar junta comercial", "Atualizar CNPJ"] },
+    { macro: 8, subprocesso: "8.2 Faturamento, NFS-e e régua de cobrança", titulo: "Faturamento mensal dos clientes", cliente: null, responsavel: 5, start: "2026-11-20", due: "2026-11-25", priority: "Urgente", status: "Não Iniciado", recurrence: "Mensal", tipo: "Outro", observations: "", checklist: ["Emitir NFS-e", "Enviar boletos", "Verificar inadimplentes"] }
+  ];
+  
+  return baseTasks.map((t, i) => createTask(i + 1, t));
+}
+
+function createTask(id, data) {
+  return {
+    id: id,
+    titulo: data.titulo,
+    descricao: data.descricao || "",
+    macro: parseInt(data.macro),
+    subprocesso: data.subprocesso,
+    cliente: data.cliente ? parseInt(data.cliente) : null,
+    responsavel: parseInt(data.responsavel),
+    start: data.start,
+    due: data.due,
+    priority: data.priority || "Normal",
+    status: data.status || "Não Iniciado",
+    recurrence: data.recurrence || "Nenhuma",
+    tipo: data.tipo || "LTDA",
+    observations: data.observations || "",
+    checklist: (data.checklist || []).map((text, idx) => ({ id: idx + 1, texto: text, concluido: false })),
+    createdAt: data.createdAt || new Date().toISOString()
+  };
+}
+
+// ============================================
+// PERSISTÊNCIA
+// ============================================
+function loadData() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      empresas = data.empresas || [];
+      equipe = data.equipe || [];
+      tarefas = data.tarefas || [];
+      lembretes = data.lembretes || [];
+      honorarios = data.honorarios || [];
+    } else {
+      resetToInitial();
+    }
+  } catch (e) {
+    console.warn('localStorage indisponível, usando dados em memória');
+    resetToInitial();
+  }
+  syncHonorarios();
+}
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ empresas, equipe, tarefas, lembretes, honorarios }));
+  } catch (e) {
+    console.warn('Não foi possível salvar no localStorage');
+  }
+}
+
+function syncHonorarios() {
+  // Garante que toda empresa tenha um registro de honorário
+  empresas.forEach(emp => {
+    let h = honorarios.find(ho => ho.empresaId === emp.id);
+    if (!h) {
+      honorarios.push({
+        id: honorarios.length ? Math.max(...honorarios.map(ho => ho.id)) + 1 : 1,
+        empresaId: emp.id,
+        valor: emp.honorario,
+        status: Math.random() > 0.6 ? "Pago" : "Pendente"
+      });
+    }
+  });
+}
+
+function resetToInitial() {
+  const initial = getInitialData();
+  empresas = initial.empresas;
+  equipe = initial.equipe;
+  tarefas = initial.tarefas;
+  lembretes = initial.lembretes;
+  honorarios = initial.honorarios;
+  saveData();
+}
+
+function resetData() {
+  if (confirm('Deseja restaurar os dados iniciais? Todos os dados atuais serão perdidos.')) {
+    resetToInitial();
+    renderContent();
+    showToast('Dados restaurados com sucesso');
+  }
+}
+
+function exportData() {
+  const data = JSON.stringify({ empresas, equipe, tarefas, lembretes, honorarios }, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `contabilpro_backup_${formatDateFile(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Dados exportados com sucesso');
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      empresas = data.empresas || [];
+      equipe = data.equipe || [];
+      tarefas = data.tarefas || [];
+      lembretes = data.lembretes || [];
+      honorarios = data.honorarios || [];
+      saveData();
+      renderContent();
+      showToast('Dados importados com sucesso');
+    } catch (err) {
+      alert('Erro ao importar arquivo. Verifique se é um JSON válido.');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ============================================
+// NAVEGAÇÃO
+// ============================================
+function navigate(view, macroId = null) {
+  currentView = view;
+  selectedMacro = macroId;
+  
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById(`nav-${view}`);
+  if (navEl) navEl.classList.add('active');
+  
+  if (macroId) {
+    document.querySelectorAll('[id^="nav-macro-"]').forEach(el => el.classList.remove('active'));
+    document.getElementById(`nav-macro-${macroId}`)?.classList.add('active');
+  }
+  
+  const titles = {
+    dashboard: ["Dashboard", "Visão geral das rotinas do escritório"],
+    processos: [macroId ? macros.find(m => m.id === macroId).nome : "Processos", "Lista de tarefas e checklists"],
+    kanban: ["Kanban", "Visualização por status"],
+    calendario: ["Calendário de Obrigações", "Prazos consolidados"],
+    empresas: ["Empresas", "Carteira de clientes"],
+    equipe: ["Equipe", "Integrantes do escritório"],
+    honorarios: ["Honorários", "Faturamento mensal por cliente"]
+  };
+  
+  document.getElementById('page-title').textContent = titles[view][0];
+  document.getElementById('page-subtitle').textContent = titles[view][1];
+  
+  renderContent();
+}
+
+function renderMacrosMenu() {
+  const menu = document.getElementById('macros-menu');
+  menu.innerHTML = macros.map(m => `
+    <a href="#" onclick="navigate('processos', ${m.id})" id="nav-macro-${m.id}" class="sidebar-item flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white rounded-lg mx-2">
+      <span class="w-5 text-center text-xs font-bold">${m.id}</span> ${m.nome.split('/')[0]}
+    </a>
+  `).join('');
+}
+
+function renderContent() {
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+  
+  switch(currentView) {
+    case 'dashboard': renderDashboard(content); break;
+    case 'processos': renderProcessos(content); break;
+    case 'kanban': renderKanban(content); break;
+    case 'calendario': renderCalendario(content); break;
+    case 'empresas': renderEmpresas(content); break;
+    case 'equipe': renderEquipe(content); break;
+    case 'honorarios': renderHonorarios(content); break;
+  }
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+function renderDashboard(container) {
+  const stats = {
+    total: tarefas.length,
+    concluido: tarefas.filter(t => t.status === 'Concluído').length,
+    andamento: tarefas.filter(t => t.status === 'Em Andamento').length,
+    atrasado: tarefas.filter(t => isAtrasado(t) && t.status !== 'Concluído').length,
+    urgente: tarefas.filter(t => t.priority === 'Urgente' && t.status !== 'Concluído').length,
+    recorrentes: tarefas.filter(t => t.recurrence !== 'Nenhuma').length
+  };
+  
+  const totalHonorarios = honorarios.reduce((sum, h) => sum + (parseFloat(h.valor) || 0), 0);
+  const pendentesHonorarios = honorarios.filter(h => h.status !== 'Pago').length;
+  
+  const tarefasPorResponsavel = {};
+  equipe.forEach(e => tarefasPorResponsavel[e.id] = { nome: e.nome, pendentes: 0, atrasadas: 0 });
+  tarefas.filter(t => t.status !== 'Concluído').forEach(t => {
+    if (tarefasPorResponsavel[t.responsavel]) {
+      tarefasPorResponsavel[t.responsavel].pendentes++;
+      if (isAtrasado(t)) tarefasPorResponsavel[t.responsavel].atrasadas++;
+    }
+  });
+  
+  const tarefasPorEmpresa = {};
+  empresas.forEach(e => tarefasPorEmpresa[e.id] = { nome: e.nome, pendentes: 0 });
+  tarefas.filter(t => t.status !== 'Concluído' && t.cliente).forEach(t => {
+    if (tarefasPorEmpresa[t.cliente]) tarefasPorEmpresa[t.cliente].pendentes++;
+  });
+  
+  container.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-sm text-slate-500">Total de Tarefas</p>
+            <p class="text-3xl font-bold mt-1">${stats.total}</p>
+          </div>
+          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600"><i class="fas fa-tasks"></i></div>
+        </div>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-sm text-slate-500">Em Andamento</p>
+            <p class="text-3xl font-bold mt-1 text-secondary">${stats.andamento}</p>
+          </div>
+          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600"><i class="fas fa-spinner"></i></div>
+        </div>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-sm text-slate-500">Concluídas</p>
+            <p class="text-3xl font-bold mt-1 text-success">${stats.concluido}</p>
+          </div>
+          <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600"><i class="fas fa-check-circle"></i></div>
+        </div>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-sm text-slate-500">Atrasadas / Urgentes</p>
+            <p class="text-3xl font-bold mt-1 ${stats.atrasado > 0 ? 'text-danger' : 'text-slate-700'}">${stats.atrasado} <span class="text-lg text-warning">/ ${stats.urgente}</span></p>
+          </div>
+          <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-600"><i class="fas fa-exclamation-triangle"></i></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-5 border-b border-slate-200">
+          <h3 class="font-bold text-lg">Tarefas por Macro</h3>
+        </div>
+        <div class="p-5">
+          ${macros.map(m => {
+            const macroTasks = tarefas.filter(t => t.macro === m.id);
+            const count = macroTasks.length;
+            const concluido = macroTasks.filter(t => t.status === 'Concluído').length;
+            const pct = count > 0 ? (concluido / count * 100) : 0;
+            return `
+              <div class="mb-4">
+                <div class="flex justify-between text-sm mb-1">
+                  <span class="font-medium">${m.id}. ${m.nome}</span>
+                  <span class="text-slate-500">${concluido}/${count}</span>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2">
+                  <div class="${m.cor} h-2 rounded-full progress-bar" style="width: ${pct}%"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-5 border-b border-slate-200">
+          <h3 class="font-bold text-lg">Próximos Prazos</h3>
+        </div>
+        <div class="p-5">
+          ${getProximosPrazosHTML()}
+        </div>
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-5 border-b border-slate-200">
+          <h3 class="font-bold text-lg">Por Responsável</h3>
+        </div>
+        <div class="p-5">
+          ${Object.values(tarefasPorResponsavel).map(r => `
+            <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+              <span class="text-sm">${r.nome}</span>
+              <div class="flex gap-2">
+                <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">${r.pendentes} pendentes</span>
+                ${r.atrasadas > 0 ? `<span class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full">${r.atrasadas} atrasadas</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-5 border-b border-slate-200">
+          <h3 class="font-bold text-lg">Por Empresa</h3>
+        </div>
+        <div class="p-5">
+          ${Object.values(tarefasPorEmpresa).map(e => `
+            <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+              <span class="text-sm truncate max-w-[200px]">${e.nome}</span>
+              <span class="text-xs px-2 py-1 bg-slate-100 text-slate-700 rounded-full">${e.pendentes} pendentes</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div class="p-5 border-b border-slate-200">
+          <h3 class="font-bold text-lg">Honorários</h3>
+        </div>
+        <div class="p-5">
+          <div class="mb-4">
+            <p class="text-sm text-slate-500">Faturamento Mensal</p>
+            <p class="text-2xl font-bold text-success">${formatCurrency(totalHonorarios)}</p>
+          </div>
+          <div class="mb-4">
+            <p class="text-sm text-slate-500">Clientes Pendentes</p>
+            <p class="text-xl font-bold ${pendentesHonorarios > 0 ? 'text-danger' : 'text-slate-700'}">${pendentesHonorarios}</p>
+          </div>
+          <div>
+            <p class="text-sm text-slate-500">Tarefas Recorrentes</p>
+            <p class="text-xl font-bold text-secondary">${stats.recorrentes}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    ${renderLembretesSection()}
+  `;
+}
+
+function getProximosPrazosHTML() {
+  const pendentes = tarefas.filter(t => t.status !== 'Concluído').sort((a, b) => new Date(a.due) - new Date(b.due)).slice(0, 5);
+  if (!pendentes.length) return '<p class="text-slate-500 text-sm">Nenhuma tarefa pendente.</p>';
+  
+  return pendentes.map(t => `
+    <div class="flex items-start gap-3 mb-4 pb-3 border-b border-slate-100 last:border-0 last:pb-0 last:mb-0 cursor-pointer hover:bg-slate-50 p-2 rounded-lg" onclick="editTask(${t.id})">
+      <div class="w-10 h-10 ${getPriorityColor(t.priority)} rounded-lg flex items-center justify-center text-white text-xs font-bold">
+        ${new Date(t.due).getDate()}
+      </div>
+      <div class="flex-1">
+        <p class="text-sm font-medium line-clamp-1">${t.titulo}</p>
+        <p class="text-xs text-slate-500">${getClienteNome(t.cliente)} • ${getResponsavelNome(t.responsavel)}</p>
+        <span class="badge-priority ${getPriorityBadge(t.priority)} mt-1 inline-block">${t.priority}</span>
+        ${isAtrasado(t) ? '<span class="text-xs text-danger ml-2 font-semibold">Atrasada</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderLembretesSection() {
+  const pendentes = lembretes.filter(l => !l.concluido).slice(0, 3);
+  if (!pendentes.length) return '';
+  
+  return `
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+      <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+        <h3 class="font-bold text-lg">Lembretes Pendentes</h3>
+        <button onclick="openLembretes()" class="text-sm text-secondary hover:text-blue-700">Ver todos</button>
+      </div>
+      <div class="p-5">
+        ${pendentes.map(l => `
+          <div class="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-2">
+            <i class="fas fa-bell text-amber-500"></i>
+            <span class="flex-1 text-sm">${l.texto}</span>
+            <button onclick="toggleLembrete(${l.id})" class="text-xs text-secondary hover:text-blue-700 font-medium">Concluir</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================
+// PROCESSOS
+// ============================================
+function renderProcessos(container) {
+  container.innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+      <div class="p-5 border-b border-slate-200">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="flex-1 min-w-[200px]">
+            <label class="block text-xs font-medium text-slate-500 mb-1">Buscar</label>
+            <div class="relative">
+              <input type="text" id="search-text" placeholder="Título, empresa ou responsável..." 
+                class="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+              <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Macro</label>
+            <select id="filter-macro" class="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[160px]">
+              <option value="">Todas</option>
+              ${selectedMacro ? `<option value="${selectedMacro}" selected>${selectedMacro}. ${macros.find(m => m.id === selectedMacro).nome}</option>` : ''}
+              ${!selectedMacro ? macros.map(m => `<option value="${m.id}">${m.id}. ${m.nome}</option>`).join('') : ''}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+            <select id="filter-status" class="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[140px]">
+              <option value="">Todos</option>
+              <option>Não Iniciado</option>
+              <option>Em Andamento</option>
+              <option>Aguardando Cliente</option>
+              <option>Revisão</option>
+              <option>Concluído</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Prioridade</label>
+            <select id="filter-priority" class="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[120px]">
+              <option value="">Todas</option>
+              <option>Baixa</option>
+              <option>Normal</option>
+              <option>Alta</option>
+              <option>Urgente</option>
+            </select>
+          </div>
+          <button onclick="aplicarFiltrosProcessos()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+            <i class="fas fa-search mr-2"></i>Buscar
+          </button>
+          <button onclick="limparFiltrosProcessos()" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 rounded-lg text-sm">
+            Limpar
+          </button>
+        </div>
+      </div>
+      <div id="processos-table-container" class="overflow-x-auto">
+        ${renderProcessosTable()}
+      </div>
+    </div>
+  `;
+  
+  // Adiciona listeners de enter
+  setTimeout(() => {
+    const searchInput = document.getElementById('search-text');
+    if (searchInput) {
+      searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') aplicarFiltrosProcessos(); });
+    }
+  }, 10);
+}
+
+function renderProcessosTable() {
+  const searchText = (document.getElementById('search-text')?.value || '').toLowerCase();
+  const macroFiltro = document.getElementById('filter-macro')?.value || '';
+  const statusFiltro = document.getElementById('filter-status')?.value || '';
+  const prioridadeFiltro = document.getElementById('filter-priority')?.value || '';
+  
+  let exibidas = tarefas;
+  
+  if (selectedMacro && !macroFiltro) exibidas = exibidas.filter(t => t.macro == selectedMacro);
+  if (macroFiltro) exibidas = exibidas.filter(t => t.macro == macroFiltro);
+  if (statusFiltro) exibidas = exibidas.filter(t => t.status === statusFiltro);
+  if (prioridadeFiltro) exibidas = exibidas.filter(t => t.priority === prioridadeFiltro);
+  if (searchText) {
+    exibidas = exibidas.filter(t => 
+      t.titulo.toLowerCase().includes(searchText) ||
+      t.subprocesso.toLowerCase().includes(searchText) ||
+      getClienteNome(t.cliente).toLowerCase().includes(searchText) ||
+      getResponsavelNome(t.responsavel).toLowerCase().includes(searchText)
+    );
+  }
+  
+  if (!exibidas.length) {
+    return `
+      <div class="p-12 text-center">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-inbox text-slate-400 text-2xl"></i>
+        </div>
+        <h3 class="text-lg font-medium text-slate-600 mb-1">Nenhuma tarefa encontrada</h3>
+        <p class="text-sm text-slate-500 mb-4">Ajuste os filtros ou cadastre uma nova tarefa.</p>
+        <button onclick="openTaskModal()" class="px-4 py-2 bg-secondary text-white rounded-lg text-sm">Nova Tarefa</button>
+      </div>
+    `;
+  }
+  
+  return `
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-600">
+        <tr>
+          <th class="px-4 py-3 text-left font-medium">Tarefa</th>
+          <th class="px-4 py-3 text-left font-medium">Macro</th>
+          <th class="px-4 py-3 text-left font-medium">Empresa</th>
+          <th class="px-4 py-3 text-left font-medium">Responsável</th>
+          <th class="px-4 py-3 text-left font-medium">Início</th>
+          <th class="px-4 py-3 text-left font-medium">Prazo</th>
+          <th class="px-4 py-3 text-left font-medium">Status</th>
+          <th class="px-4 py-3 text-left font-medium">Prioridade</th>
+          <th class="px-4 py-3 text-center font-medium">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        ${exibidas.map(t => `
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-3">
+              <p class="font-medium">${t.titulo}</p>
+              <p class="text-xs text-slate-500">${t.subprocesso}</p>
+              ${t.recurrence !== 'Nenhuma' ? `<span class="text-xs text-secondary"><i class="fas fa-sync-alt mr-1"></i>${t.recurrence}</span>` : ''}
+            </td>
+            <td class="px-4 py-3"><span class="text-xs font-medium px-2 py-1 bg-slate-100 rounded">${macros.find(m => m.id === t.macro).nome.split('/')[0]}</span></td>
+            <td class="px-4 py-3">${getClienteNome(t.cliente)}</td>
+            <td class="px-4 py-3">${getResponsavelNome(t.responsavel)}</td>
+            <td class="px-4 py-3 text-slate-500">${formatDate(t.start)}</td>
+            <td class="px-4 py-3 ${isAtrasado(t) ? 'text-danger font-semibold' : ''}">${formatDate(t.due)}</td>
+            <td class="px-4 py-3"><span class="text-xs px-2 py-1 rounded-full ${getStatusBadge(t.status)}">${t.status}</span></td>
+            <td class="px-4 py-3"><span class="text-xs px-2 py-1 rounded-full ${getPriorityBadge(t.priority)}">${t.priority}</span></td>
+            <td class="px-4 py-3 text-center">
+              <button onclick="editTask(${t.id})" class="text-secondary hover:text-blue-700 mx-1" title="Editar"><i class="fas fa-edit"></i></button>
+              <button onclick="deleteTask(${t.id})" class="text-danger hover:text-red-700 mx-1" title="Excluir"><i class="fas fa-trash"></i></button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function aplicarFiltrosProcessos() {
+  const container = document.getElementById('processos-table-container');
+  if (container) container.innerHTML = renderProcessosTable();
+}
+
+function limparFiltrosProcessos() {
+  document.getElementById('search-text').value = '';
+  document.getElementById('filter-macro').value = selectedMacro || '';
+  document.getElementById('filter-status').value = '';
+  document.getElementById('filter-priority').value = '';
+  aplicarFiltrosProcessos();
+}
+
+// ============================================
+// KANBAN
+// ============================================
+function renderKanban(container) {
+  const statuses = ['Não Iniciado', 'Em Andamento', 'Aguardando Cliente', 'Revisão', 'Concluído'];
+  const columns = {
+    'Não Iniciado': 'bg-slate-100',
+    'Em Andamento': 'bg-blue-50',
+    'Aguardando Cliente': 'bg-amber-50',
+    'Revisão': 'bg-purple-50',
+    'Concluído': 'bg-emerald-50'
+  };
+  
+  container.innerHTML = `
+    <div class="flex gap-4 overflow-x-auto pb-4 h-full">
+      ${statuses.map(status => {
+        const tasks = tarefas.filter(t => t.status === status);
+        return `
+          <div class="kanban-column flex-shrink-0 w-80 ${columns[status]} rounded-xl p-4" 
+               ondragover="allowDrop(event)" ondrop="dropTask(event, '${status}')">
+            <div class="flex justify-between items-center mb-4 sticky top-0">
+              <h3 class="font-bold text-sm">${status}</h3>
+              <span class="bg-white px-2 py-1 rounded-full text-xs font-bold">${tasks.length}</span>
+            </div>
+            <div class="space-y-3">
+              ${tasks.map(t => `
+                <div class="task-card bg-white p-4 rounded-lg shadow-sm border border-slate-200" 
+                     draggable="true" ondragstart="dragTask(event, ${t.id})" onclick="editTask(${t.id})">
+                  <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs px-2 py-1 rounded-full ${getPriorityBadge(t.priority)}">${t.priority}</span>
+                    ${isAtrasado(t) ? '<i class="fas fa-exclamation-circle text-danger" title="Atrasada"></i>' : ''}
+                  </div>
+                  <h4 class="font-medium text-sm mb-2">${t.titulo}</h4>
+                  <p class="text-xs text-slate-500 mb-3">${t.subprocesso}</p>
+                  <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
+                    <span><i class="far fa-clock mr-1"></i>${formatDate(t.due)}</span>
+                    <span title="${getResponsavelNome(t.responsavel)}" class="w-6 h-6 bg-secondary text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      ${getInitials(getResponsavelNome(t.responsavel))}
+                    </span>
+                  </div>
+                  ${t.checklist.length > 0 ? `
+                    <div class="mt-3">
+                      <div class="w-full bg-slate-100 rounded-full h-1.5">
+                        <div class="bg-secondary h-1.5 rounded-full progress-bar" style="width: ${getChecklistProgress(t)}%"></div>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-1">${getChecklistProgress(t)}% checklist</p>
+                    </div>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function dragTask(event, taskId) {
+  event.dataTransfer.setData('taskId', taskId);
+  event.target.classList.add('dragging');
+}
+
+function allowDrop(event) {
+  event.preventDefault();
+}
+
+function dropTask(event, newStatus) {
+  event.preventDefault();
+  const taskId = parseInt(event.dataTransfer.getData('taskId'));
+  const task = tarefas.find(t => t.id === taskId);
+  if (task && task.status !== newStatus) {
+    task.status = newStatus;
+    if (newStatus === 'Concluído') {
+      task.checklist.forEach(c => c.concluido = true);
+      handleRecurrence(task);
+    }
+    saveData();
+    renderContent();
+    showToast(`Tarefa movida para "${newStatus}"`);
+  }
+  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+}
+
+// ============================================
+// CALENDÁRIO
+// ============================================
+function renderCalendario(container) {
+  const ano = calendarDate.getFullYear();
+  const mes = calendarDate.getMonth();
+  const primeiroDia = new Date(ano, mes, 1);
+  const ultimoDia = new Date(ano, mes + 1, 0);
+  const diasNoMes = ultimoDia.getDate();
+  const diaSemanaInicio = primeiroDia.getDay();
+  
+  const nomesMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  
+  let diasHTML = '';
+  for (let i = 0; i < diaSemanaInicio; i++) {
+    diasHTML += `<div class="calendar-day bg-slate-50 border border-slate-100"></div>`;
+  }
+  
+  const hoje = new Date();
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const dataStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    const tarefasDia = tarefas.filter(t => t.due === dataStr || t.start === dataStr);
+    const lembretesDia = lembretes.filter(l => {
+      // Lembretes não têm data, então não aparecem no calendário por data
+      return false;
+    });
+    const isHoje = dia === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear();
+    
+    diasHTML += `
+      <div class="calendar-day bg-white border border-slate-100 p-2 ${isHoje ? 'ring-2 ring-secondary ring-inset' : ''}">
+        <div class="flex justify-between items-center mb-1">
+          <span class="text-sm font-semibold ${isHoje ? 'text-secondary' : 'text-slate-700'}">${dia}</span>
+        </div>
+        <div class="space-y-1">
+          ${tarefasDia.map(t => `
+            <div class="text-xs p-1.5 rounded ${getPriorityBadge(t.priority)} cursor-pointer hover:opacity-80 truncate" 
+                 onclick="editTask(${t.id})" title="${t.titulo}">
+              ${t.titulo}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-xl font-bold">${nomesMes[mes]} ${ano}</h3>
+          <div class="flex gap-2">
+            <button onclick="changeMonth(-1)" class="px-3 py-1 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"><i class="fas fa-chevron-left"></i></button>
+            <button onclick="changeMonth(1)" class="px-3 py-1 border border-slate-300 rounded-lg text-sm hover:bg-slate-50"><i class="fas fa-chevron-right"></i></button>
+          </div>
+        </div>
+        <div class="grid grid-cols-7 gap-px bg-slate-200 rounded-lg overflow-hidden">
+          ${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => `
+            <div class="bg-slate-50 py-2 text-center text-xs font-semibold text-slate-600">${d}</div>
+          `).join('')}
+          ${diasHTML}
+        </div>
+      </div>
+      
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 class="font-bold text-lg mb-4">Obrigações Anuais - Referência</h3>
+          <div class="space-y-3">
+            ${[
+              {nome: "DIRF", prazo: "Fevereiro", macro: "6.2"},
+              {nome: "DEFIS (Simples Nacional)", prazo: "Março", macro: "6.6"},
+              {nome: "RAIS", prazo: "Março/Abril", macro: "6.3"},
+              {nome: "IRPF sócios/funcionários", prazo: "Abril", macro: "6.1"},
+              {nome: "ECD (SPED Contábil)", prazo: "Junho", macro: "6.4"},
+              {nome: "ECF", prazo: "Julho", macro: "6.5"},
+              {nome: "Planejamento tributário", prazo: "Out/Nov", macro: "6.7"}
+            ].map(o => `
+              <div class="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                <div>
+                  <p class="font-medium text-sm">${o.nome}</p>
+                  <p class="text-xs text-slate-500">Prazo: ${o.prazo}</p>
+                </div>
+                <span class="text-xs font-bold text-secondary">${o.macro}</span>
+              </div>
+            `).join('')}
+          </div>
+          <p class="text-xs text-slate-500 mt-3">As datas são referências e podem ser editadas por ano nas tarefas.</p>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 class="font-bold text-lg mb-4">Agenda do Dia</h3>
+          ${renderAgendaDoDia()}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function changeMonth(delta) {
+  calendarDate.setMonth(calendarDate.getMonth() + delta);
+  renderContent();
+}
+
+function renderAgendaDoDia() {
+  const hoje = formatDateISO(new Date());
+  const tarefasHoje = tarefas.filter(t => t.due === hoje || t.start === hoje);
+  
+  if (!tarefasHoje.length) {
+    return '<p class="text-sm text-slate-500">Nenhuma tarefa para hoje.</p>';
+  }
+  
+  return tarefasHoje.map(t => `
+    <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg mb-2 cursor-pointer hover:bg-slate-100" onclick="editTask(${t.id})">
+      <div class="w-2 h-2 mt-2 rounded-full ${getPriorityColor(t.priority)}"></div>
+      <div class="flex-1">
+        <p class="text-sm font-medium">${t.titulo}</p>
+        <p class="text-xs text-slate-500">${getClienteNome(t.cliente)} • ${getResponsavelNome(t.responsavel)}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ============================================
+// EMPRESAS
+// ============================================
+function renderEmpresas(container) {
+  container.innerHTML = `
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h3 class="text-lg font-bold">Carteira de Clientes</h3>
+        <p class="text-sm text-slate-500">${empresas.length} empresas cadastradas</p>
+      </div>
+      <button onclick="openEmpresaModal()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+        <i class="fas fa-plus mr-2"></i>Nova Empresa
+      </button>
+    </div>
+    
+    ${!empresas.length ? `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-building text-slate-400 text-2xl"></i>
+        </div>
+        <h3 class="text-lg font-medium text-slate-600 mb-1">Nenhuma empresa cadastrada</h3>
+        <p class="text-sm text-slate-500 mb-4">Cadastre seus clientes para vincular às tarefas.</p>
+        <button onclick="openEmpresaModal()" class="px-4 py-2 bg-secondary text-white rounded-lg text-sm">Nova Empresa</button>
+      </div>
+    ` : `
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        ${empresas.map(c => {
+          const tarefasCliente = tarefas.filter(t => t.cliente === c.id);
+          const pendentes = tarefasCliente.filter(t => t.status !== 'Concluído').length;
+          const concluidas = tarefasCliente.filter(t => t.status === 'Concluído').length;
+          return `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition">
+              <div class="flex justify-between items-start mb-3">
+                <div class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center text-white text-xl">
+                  <i class="fas fa-building"></i>
+                </div>
+                <span class="text-xs font-medium px-2 py-1 bg-slate-100 rounded">${c.tipo}</span>
+              </div>
+              <h3 class="font-bold text-lg mb-1">${c.nome}</h3>
+              <p class="text-sm text-slate-500 mb-1">${c.cnpj}</p>
+              <p class="text-xs text-slate-400 mb-4">${c.endereco}</p>
+              
+              <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-slate-50 p-3 rounded-lg text-center">
+                  <p class="text-xl font-bold text-secondary">${pendentes}</p>
+                  <p class="text-xs text-slate-500">Pendentes</p>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-lg text-center">
+                  <p class="text-xl font-bold text-success">${concluidas}</p>
+                  <p class="text-xs text-slate-500">Concluídas</p>
+                </div>
+              </div>
+              
+              <div class="space-y-2 mb-4 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-slate-500">Responsável legal:</span>
+                  <span class="font-medium">${c.responsavelLegal}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-500">Honorário:</span>
+                  <span class="font-medium text-success">${formatCurrency(c.honorario)}</span>
+                </div>
+              </div>
+              
+              <div class="flex gap-2">
+                <button onclick="editEmpresa(${c.id})" class="flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium">
+                  <i class="fas fa-edit mr-1"></i>Editar
+                </button>
+                <button onclick="deleteEmpresa(${c.id})" class="px-3 py-2 border border-danger text-danger hover:bg-red-50 rounded-lg text-sm">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `}
+  `;
+}
+
+function openEmpresaModal(id = null) {
+  const modal = document.getElementById('empresa-modal');
+  const form = document.getElementById('empresa-form');
+  
+  if (id) {
+    const e = empresas.find(emp => emp.id === id);
+    document.getElementById('empresa-modal-title').textContent = 'Editar Empresa';
+    document.getElementById('empresa-id').value = e.id;
+    document.getElementById('empresa-nome').value = e.nome;
+    document.getElementById('empresa-cnpj').value = e.cnpj;
+    document.getElementById('empresa-tipo').value = e.tipo;
+    document.getElementById('empresa-endereco').value = e.endereco;
+    document.getElementById('empresa-responsavel-legal').value = e.responsavelLegal;
+    document.getElementById('empresa-honorario').value = e.honorario;
+  } else {
+    document.getElementById('empresa-modal-title').textContent = 'Nova Empresa';
+    form.reset();
+    document.getElementById('empresa-id').value = '';
+  }
+  
+  modal.classList.add('active');
+}
+
+function saveEmpresa(event) {
+  event.preventDefault();
+  
+  const id = document.getElementById('empresa-id').value;
+  const empresaData = {
+    nome: document.getElementById('empresa-nome').value,
+    cnpj: document.getElementById('empresa-cnpj').value,
+    tipo: document.getElementById('empresa-tipo').value,
+    endereco: document.getElementById('empresa-endereco').value,
+    responsavelLegal: document.getElementById('empresa-responsavel-legal').value,
+    honorario: parseFloat(document.getElementById('empresa-honorario').value) || 0
+  };
+  
+  if (id) {
+    const index = empresas.findIndex(e => e.id == id);
+    empresas[index] = { ...empresas[index], ...empresaData };
+    // Atualiza honorário vinculado
+    const h = honorarios.find(ho => ho.empresaId == id);
+    if (h) h.valor = empresaData.honorario;
+  } else {
+    const newId = empresas.length ? Math.max(...empresas.map(e => e.id)) + 1 : 1;
+    empresas.push({ id: newId, ...empresaData });
+    honorarios.push({ id: honorarios.length ? Math.max(...honorarios.map(h => h.id)) + 1 : 1, empresaId: newId, valor: empresaData.honorario, status: 'Pendente' });
+  }
+  
+  saveData();
+  closeModal('empresa');
+  renderContent();
+  showToast(id ? 'Empresa atualizada' : 'Empresa cadastrada');
+}
+
+function editEmpresa(id) {
+  openEmpresaModal(id);
+}
+
+function deleteEmpresa(id) {
+  if (confirm('Deseja realmente excluir esta empresa? As tarefas vinculadas ficarão sem empresa.')) {
+    empresas = empresas.filter(e => e.id !== id);
+    honorarios = honorarios.filter(h => h.empresaId !== id);
+    tarefas.forEach(t => { if (t.cliente === id) t.cliente = null; });
+    saveData();
+    renderContent();
+    showToast('Empresa excluída');
+  }
+}
+
+// ============================================
+// EQUIPE
+// ============================================
+function renderEquipe(container) {
+  container.innerHTML = `
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h3 class="text-lg font-bold">Equipe</h3>
+        <p class="text-sm text-slate-500">${equipe.length} integrantes cadastrados</p>
+      </div>
+      <button onclick="openEquipeModal()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+        <i class="fas fa-plus mr-2"></i>Novo Integrante
+      </button>
+    </div>
+    
+    ${!equipe.length ? `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-users text-slate-400 text-2xl"></i>
+        </div>
+        <h3 class="text-lg font-medium text-slate-600 mb-1">Nenhum integrante cadastrado</h3>
+        <p class="text-sm text-slate-500 mb-4">Cadastre a equipe para atribuir tarefas.</p>
+        <button onclick="openEquipeModal()" class="px-4 py-2 bg-secondary text-white rounded-lg text-sm">Novo Integrante</button>
+      </div>
+    ` : `
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        ${equipe.map(e => {
+          const tarefasMembro = tarefas.filter(t => t.responsavel === e.id);
+          const atrasadas = tarefasMembro.filter(t => isAtrasado(t) && t.status !== 'Concluído').length;
+          const andamento = tarefasMembro.filter(t => t.status === 'Em Andamento').length;
+          const concluidas = tarefasMembro.filter(t => t.status === 'Concluído').length;
+          return `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="w-14 h-14 bg-secondary rounded-full flex items-center justify-center text-white text-xl font-bold">
+                  ${getInitials(e.nome)}
+                </div>
+                <div class="flex-1">
+                  <h3 class="font-bold text-lg">${e.nome}</h3>
+                  <p class="text-sm text-slate-500"><i class="fas fa-phone mr-1 text-xs"></i>${e.telefone}</p>
+                  <p class="text-sm text-slate-500"><i class="fas fa-envelope mr-1 text-xs"></i>${e.email}</p>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="editEquipe(${e.id})" class="text-secondary hover:text-blue-700"><i class="fas fa-edit"></i></button>
+                  <button onclick="deleteEquipe(${e.id})" class="text-danger hover:text-red-700"><i class="fas fa-trash"></i></button>
+                </div>
+              </div>
+              <div class="grid grid-cols-4 gap-3">
+                <div class="text-center p-2 bg-slate-50 rounded-lg">
+                  <p class="text-lg font-bold text-slate-700">${tarefasMembro.length}</p>
+                  <p class="text-xs text-slate-500">Total</p>
+                </div>
+                <div class="text-center p-2 bg-blue-50 rounded-lg">
+                  <p class="text-lg font-bold text-secondary">${andamento}</p>
+                  <p class="text-xs text-slate-500">Andamento</p>
+                </div>
+                <div class="text-center p-2 bg-red-50 rounded-lg">
+                  <p class="text-lg font-bold text-danger">${atrasadas}</p>
+                  <p class="text-xs text-slate-500">Atrasadas</p>
+                </div>
+                <div class="text-center p-2 bg-emerald-50 rounded-lg">
+                  <p class="text-lg font-bold text-success">${concluidas}</p>
+                  <p class="text-xs text-slate-500">Concluídas</p>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `}
+  `;
+}
+
+function openEquipeModal(id = null) {
+  const modal = document.getElementById('equipe-modal');
+  const form = document.getElementById('equipe-form');
+  
+  if (id) {
+    const e = equipe.find(mem => mem.id === id);
+    document.getElementById('equipe-modal-title').textContent = 'Editar Integrante';
+    document.getElementById('equipe-id').value = e.id;
+    document.getElementById('equipe-nome').value = e.nome;
+    document.getElementById('equipe-telefone').value = e.telefone;
+    document.getElementById('equipe-email').value = e.email;
+  } else {
+    document.getElementById('equipe-modal-title').textContent = 'Novo Integrante';
+    form.reset();
+    document.getElementById('equipe-id').value = '';
+  }
+  
+  modal.classList.add('active');
+}
+
+function saveEquipe(event) {
+  event.preventDefault();
+  
+  const id = document.getElementById('equipe-id').value;
+  const equipeData = {
+    nome: document.getElementById('equipe-nome').value,
+    telefone: document.getElementById('equipe-telefone').value,
+    email: document.getElementById('equipe-email').value
+  };
+  
+  if (id) {
+    const index = equipe.findIndex(e => e.id == id);
+    equipe[index] = { ...equipe[index], ...equipeData };
+  } else {
+    const newId = equipe.length ? Math.max(...equipe.map(e => e.id)) + 1 : 1;
+    equipe.push({ id: newId, ...equipeData });
+  }
+  
+  saveData();
+  closeModal('equipe');
+  renderContent();
+  showToast(id ? 'Integrante atualizado' : 'Integrante cadastrado');
+}
+
+function editEquipe(id) {
+  openEquipeModal(id);
+}
+
+function deleteEquipe(id) {
+  if (confirm('Deseja realmente excluir este integrante? As tarefas atribuídas ficarão sem responsável.')) {
+    equipe = equipe.filter(e => e.id !== id);
+    tarefas.forEach(t => { if (t.responsavel === id) t.responsavel = null; });
+    saveData();
+    renderContent();
+    showToast('Integrante excluído');
+  }
+}
+
+// ============================================
+// HONORÁRIOS
+// ============================================
+function renderHonorarios(container) {
+  const total = honorarios.reduce((sum, h) => sum + (parseFloat(h.valor) || 0), 0);
+  const totalPendente = honorarios.filter(h => h.status !== 'Pago').reduce((sum, h) => sum + (parseFloat(h.valor) || 0), 0);
+  const pendentes = honorarios.filter(h => h.status !== 'Pago').length;
+  
+  container.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm text-slate-500">Faturamento Mensal</p>
+        <p class="text-2xl font-bold text-success mt-1">${formatCurrency(total)}</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm text-slate-500">Clientes Pendentes</p>
+        <p class="text-2xl font-bold text-danger mt-1">${pendentes}</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm text-slate-500">Valor em Aberto</p>
+        <p class="text-2xl font-bold text-warning mt-1">${formatCurrency(totalPendente)}</p>
+      </div>
+    </div>
+    
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+      <div class="p-5 border-b border-slate-200">
+        <h3 class="font-bold text-lg">Honorários por Cliente</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr>
+              <th class="px-4 py-3 text-left">Empresa</th>
+              <th class="px-4 py-3 text-left">Tipo Societário</th>
+              <th class="px-4 py-3 text-left">Responsável Legal</th>
+              <th class="px-4 py-3 text-right">Honorário Mensal</th>
+              <th class="px-4 py-3 text-center">Status</th>
+              <th class="px-4 py-3 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${honorarios.map(h => {
+              const empresa = empresas.find(e => e.id === h.empresaId);
+              if (!empresa) return '';
+              return `
+                <tr class="hover:bg-slate-50">
+                  <td class="px-4 py-3 font-medium">${empresa.nome}</td>
+                  <td class="px-4 py-3">${empresa.tipo}</td>
+                  <td class="px-4 py-3">${empresa.responsavelLegal}</td>
+                  <td class="px-4 py-3 text-right font-medium">${formatCurrency(h.valor)}</td>
+                  <td class="px-4 py-3 text-center">
+                    <span class="text-xs px-2 py-1 rounded-full ${getHonorarioStatusBadge(h.status)}">${h.status}</span>
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <button onclick="openHonorarioModal(${h.empresaId})" class="text-secondary hover:text-blue-700"><i class="fas fa-edit"></i></button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+          <tfoot class="bg-slate-50 font-bold">
+            <tr>
+              <td class="px-4 py-3" colspan="3">Total</td>
+              <td class="px-4 py-3 text-right text-success">${formatCurrency(total)}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openHonorarioModal(empresaId) {
+  const empresa = empresas.find(e => e.id === empresaId);
+  const h = honorarios.find(ho => ho.empresaId === empresaId);
+  
+  document.getElementById('honorario-empresa-id').value = empresaId;
+  document.getElementById('honorario-empresa-nome').value = empresa.nome;
+  document.getElementById('honorario-valor').value = h ? h.valor : empresa.honorario;
+  document.getElementById('honorario-status').value = h ? h.status : 'Pendente';
+  
+  document.getElementById('honorario-modal').classList.add('active');
+}
+
+function saveHonorario(event) {
+  event.preventDefault();
+  
+  const empresaId = parseInt(document.getElementById('honorario-empresa-id').value);
+  const novoValor = parseFloat(document.getElementById('honorario-valor').value) || 0;
+  const novoStatus = document.getElementById('honorario-status').value;
+  
+  const h = honorarios.find(ho => ho.empresaId === empresaId);
+  if (h) {
+    h.valor = novoValor;
+    h.status = novoStatus;
+  }
+  
+  // Atualiza também o valor base da empresa
+  const empresa = empresas.find(e => e.id === empresaId);
+  if (empresa) empresa.honorario = novoValor;
+  
+  saveData();
+  closeModal('honorario');
+  renderContent();
+  showToast('Honorário atualizado');
+}
+
+// ============================================
+// TAREFAS - MODAL E OPERAÇÕES
+// ============================================
+function openTaskModal(taskId = null) {
+  const modal = document.getElementById('task-modal');
+  const form = document.getElementById('task-form');
+  const checklistDiv = document.getElementById('task-checklist');
+  
+  populateSelect('task-macro', macros.map(m => ({value: m.id, text: `${m.id}. ${m.nome}`})));
+  populateSelect('task-cliente', [{value: '', text: 'Nenhuma (interno)'}, ...empresas.map(c => ({value: c.id, text: c.nome}))]);
+  populateSelect('task-responsavel', [{value: '', text: 'Selecione...'}, ...equipe.map(e => ({value: e.id, text: e.nome}))]);
+  
+  if (taskId) {
+    const t = tarefas.find(task => task.id === taskId);
+    document.getElementById('task-modal-title').textContent = 'Editar Tarefa';
+    document.getElementById('task-id').value = t.id;
+    document.getElementById('task-title').value = t.titulo;
+    document.getElementById('task-description').value = t.descricao;
+    document.getElementById('task-macro').value = t.macro;
+    updateSubprocessosOptions(t.subprocesso);
+    document.getElementById('task-cliente').value = t.cliente || '';
+    document.getElementById('task-responsavel').value = t.responsavel || '';
+    document.getElementById('task-start').value = t.start;
+    document.getElementById('task-due').value = t.due;
+    document.getElementById('task-priority').value = t.priority;
+    document.getElementById('task-status').value = t.status;
+    document.getElementById('task-recurrence').value = t.recurrence;
+    document.getElementById('task-tipo').value = t.tipo;
+    document.getElementById('task-observations').value = t.observations;
+    
+    checklistDiv.innerHTML = t.checklist.map(item => createChecklistHTML(item.id, item.texto, item.concluido)).join('');
+  } else {
+    document.getElementById('task-modal-title').textContent = 'Nova Tarefa';
+    form.reset();
+    document.getElementById('task-id').value = '';
+    document.getElementById('task-start').value = formatDateISO(new Date());
+    document.getElementById('task-due').value = formatDateISO(addDays(new Date(), 7));
+    updateSubprocessosOptions();
+    checklistDiv.innerHTML = '';
+  }
+  
+  modal.classList.add('active');
+}
+
+function closeModal(type) {
+  document.getElementById(`${type}-modal`).classList.remove('active');
+}
+
+function openLembretes() {
+  renderLembretes();
+  document.getElementById('lembretes-modal').classList.add('active');
+}
+
+function openDataModal() {
+  document.getElementById('data-modal').classList.add('active');
+}
+
+function populateSelect(id, options) {
+  const select = document.getElementById(id);
+  select.innerHTML = options.map(o => `<option value="${o.value}">${o.text}</option>`).join('');
+}
+
+function updateSubprocessosOptions(selected = '') {
+  const macroId = document.getElementById('task-macro').value;
+  const select = document.getElementById('task-subprocesso');
+  const items = subprocessos[macroId] || [];
+  select.innerHTML = items.map(s => `<option value="${s}" ${s === selected ? 'selected' : ''}>${s}</option>`).join('');
+}
+
+function createChecklistHTML(id, texto = '', concluido = false) {
+  return `
+    <div class="flex items-center gap-2 checklist-item" data-id="${id}">
+      <input type="checkbox" class="checkbox-custom" ${concluido ? 'checked' : ''}>
+      <input type="text" value="${texto}" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm checklist-text">
+      <button type="button" onclick="this.parentElement.remove()" class="text-slate-400 hover:text-danger"><i class="fas fa-times"></i></button>
+    </div>
+  `;
+}
+
+function addChecklistItem() {
+  const div = document.getElementById('task-checklist');
+  const id = div.children.length + 1;
+  const temp = document.createElement('div');
+  temp.innerHTML = createChecklistHTML(id);
+  div.appendChild(temp.firstElementChild);
+}
+
+function saveTask(event) {
+  event.preventDefault();
+  
+  const id = document.getElementById('task-id').value;
+  const checklistItems = [];
+  document.querySelectorAll('.checklist-item').forEach(item => {
+    checklistItems.push({
+      id: parseInt(item.dataset.id) || checklistItems.length + 1,
+      texto: item.querySelector('.checklist-text').value,
+      concluido: item.querySelector('.checkbox-custom').checked
+    });
+  });
+  
+  const taskData = {
+    titulo: document.getElementById('task-title').value,
+    descricao: document.getElementById('task-description').value,
+    macro: parseInt(document.getElementById('task-macro').value),
+    subprocesso: document.getElementById('task-subprocesso').value,
+    cliente: document.getElementById('task-cliente').value || null,
+    responsavel: parseInt(document.getElementById('task-responsavel').value) || null,
+    start: document.getElementById('task-start').value,
+    due: document.getElementById('task-due').value,
+    priority: document.getElementById('task-priority').value,
+    status: document.getElementById('task-status').value,
+    recurrence: document.getElementById('task-recurrence').value,
+    tipo: document.getElementById('task-tipo').value,
+    observations: document.getElementById('task-observations').value,
+    checklist: checklistItems
+  };
+  
+  if (!taskData.responsavel) {
+    alert('Selecione um responsável para a tarefa.');
+    return;
+  }
+  
+  let wasConcluded = false;
+  if (id) {
+    const index = tarefas.findIndex(t => t.id == id);
+    wasConcluded = tarefas[index].status !== 'Concluído' && taskData.status === 'Concluído';
+    tarefas[index] = { ...tarefas[index], ...taskData };
+  } else {
+    const newId = tarefas.length > 0 ? Math.max(...tarefas.map(t => t.id)) + 1 : 1;
+    tarefas.push(createTask(newId, taskData));
+  }
+  
+  if (taskData.status === 'Concluído') {
+    taskData.checklist.forEach(c => c.concluido = true);
+  }
+  
+  saveData();
+  closeModal('task');
+  renderContent();
+  showToast(id ? 'Tarefa atualizada' : 'Tarefa criada');
+  
+  // Recorrência: se acabou de concluir e tem recorrência, cria próxima
+  if (wasConcluded && taskData.recurrence !== 'Nenhuma') {
+    handleRecurrence({ ...taskData, id: parseInt(id) });
+  }
+}
+
+function handleRecurrence(task) {
+  if (task.recurrence === 'Nenhuma') return;
+  
+  const newDue = addPeriod(new Date(task.due), task.recurrence);
+  const newStart = addPeriod(new Date(task.start), task.recurrence);
+  
+  const newId = tarefas.length > 0 ? Math.max(...tarefas.map(t => t.id)) + 1 : 1;
+  const newTask = createTask(newId, {
+    ...task,
+    titulo: task.titulo.replace(/\s*-\s*(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez|)\/\d{4}/, '') + ` - ${getMonthYear(newDue)}`,
+    start: formatDateISO(newStart),
+    due: formatDateISO(newDue),
+    status: 'Não Iniciado',
+    checklist: task.checklist.map(c => ({ ...c, concluido: false }))
+  });
+  
+  tarefas.push(newTask);
+  saveData();
+  renderContent();
+  showToast(`Nova tarefa recorrente criada para ${getMonthYear(newDue)}`);
+}
+
+function editTask(id) {
+  openTaskModal(id);
+}
+
+function deleteTask(id) {
+  if (confirm('Deseja realmente excluir esta tarefa?')) {
+    tarefas = tarefas.filter(t => t.id !== id);
+    saveData();
+    renderContent();
+    showToast('Tarefa excluída');
+  }
+}
+
+// ============================================
+// LEMBRETES
+// ============================================
+function renderLembretes() {
+  const list = document.getElementById('lembretes-list');
+  list.innerHTML = lembretes.map(l => `
+    <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg ${l.concluido ? 'opacity-60' : ''}">
+      <input type="checkbox" class="checkbox-custom" ${l.concluido ? 'checked' : ''} onchange="toggleLembrete(${l.id})">
+      <span class="flex-1 ${l.concluido ? 'line-through' : ''}">${l.texto}</span>
+      <button onclick="deleteLembrete(${l.id})" class="text-slate-400 hover:text-danger"><i class="fas fa-trash"></i></button>
+    </div>
+  `).join('');
+}
+
+function addLembrete(event) {
+  event.preventDefault();
+  const input = document.getElementById('lembrete-text');
+  lembretes.push({
+    id: lembretes.length ? Math.max(...lembretes.map(l => l.id)) + 1 : 1,
+    texto: input.value,
+    concluido: false
+  });
+  input.value = '';
+  saveData();
+  renderLembretes();
+  updateLembretesBadge();
+  if (currentView === 'dashboard') renderContent();
+}
+
+function toggleLembrete(id) {
+  const l = lembretes.find(item => item.id === id);
+  l.concluido = !l.concluido;
+  saveData();
+  renderLembretes();
+  updateLembretesBadge();
+  if (currentView === 'dashboard') renderContent();
+}
+
+function deleteLembrete(id) {
+  lembretes = lembretes.filter(l => l.id !== id);
+  saveData();
+  renderLembretes();
+  updateLembretesBadge();
+  if (currentView === 'dashboard') renderContent();
+}
+
+function updateLembretesBadge() {
+  const pendentes = lembretes.filter(l => !l.concluido).length;
+  const badge = document.getElementById('lembretes-badge');
+  if (pendentes > 0) {
+    badge.textContent = pendentes;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+// ============================================
+// HELPERS
+// ============================================
+function getClienteNome(id) {
+  if (!id) return '<span class="text-slate-400">Interno</span>';
+  const c = empresas.find(cliente => cliente.id === parseInt(id));
+  return c ? c.nome : 'Desconhecida';
+}
+
+function getResponsavelNome(id) {
+  if (!id) return '<span class="text-slate-400">Não atribuído</span>';
+  const e = equipe.find(membro => membro.id === parseInt(id));
+  return e ? e.nome : 'Não atribuído';
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const [ano, mes, dia] = dateStr.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+function formatDateISO(date) {
+  return date.toISOString().split('T')[0];
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function formatDateFile(date) {
+  return date.toISOString().split('T')[0];
+}
+
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addPeriod(date, period) {
+  const result = new Date(date);
+  switch(period) {
+    case 'Mensal': result.setMonth(result.getMonth() + 1); break;
+    case 'Trimestral': result.setMonth(result.getMonth() + 3); break;
+    case 'Anual': result.setFullYear(result.getFullYear() + 1); break;
+  }
+  return result;
+}
+
+function getMonthYear(date) {
+  const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return `${nomes[date.getMonth()]}/${date.getFullYear()}`;
+}
+
+function isAtrasado(t) {
+  if (!t || !t.due) return false;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const prazo = new Date(t.due);
+  return prazo < hoje && t.status !== 'Concluído';
+}
+
+function getPriorityColor(p) {
+  const colors = { 'Baixa': 'bg-slate-400', 'Normal': 'bg-blue-500', 'Alta': 'bg-orange-500', 'Urgente': 'bg-red-500' };
+  return colors[p] || 'bg-blue-500';
+}
+
+function getPriorityBadge(p) {
+  const badges = { 
+    'Baixa': 'bg-slate-100 text-slate-600', 
+    'Normal': 'bg-blue-100 text-blue-700', 
+    'Alta': 'bg-orange-100 text-orange-700', 
+    'Urgente': 'bg-red-100 text-red-700' 
+  };
+  return badges[p] || 'bg-blue-100 text-blue-700';
+}
+
+function getStatusBadge(status) {
+  const badges = {
+    'Não Iniciado': 'bg-slate-100 text-slate-600',
+    'Em Andamento': 'bg-blue-100 text-blue-700',
+    'Aguardando Cliente': 'bg-amber-100 text-amber-700',
+    'Revisão': 'bg-purple-100 text-purple-700',
+    'Concluído': 'bg-emerald-100 text-emerald-700'
+  };
+  return badges[status];
+}
+
+function getHonorarioStatusBadge(status) {
+  const badges = {
+    'Pago': 'bg-emerald-100 text-emerald-700',
+    'Pendente': 'bg-amber-100 text-amber-700',
+    'Atrasado': 'bg-red-100 text-red-700'
+  };
+  return badges[status] || 'bg-slate-100 text-slate-600';
+}
+
+function getChecklistProgress(t) {
+  if (!t.checklist.length) return 0;
+  const concluidos = t.checklist.filter(c => c.concluido).length;
+  return Math.round(concluidos / t.checklist.length * 100);
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-message').textContent = message;
+  toast.classList.remove('translate-y-20', 'opacity-0');
+  setTimeout(() => {
+    toast.classList.add('translate-y-20', 'opacity-0');
+  }, 3000);
+}
+
+function formatCNPJ(input) {
+  let value = input.value.replace(/\D/g, '');
+  value = value.replace(/^(\d{2})(\d)/, '$1.$2');
+  value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+  value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
+  value = value.replace(/(\d{4})(\d)/, '$1-$2');
+  input.value = value.substring(0, 18);
+}
+
+function formatPhone(input) {
+  let value = input.value.replace(/\D/g, '');
+  value = value.replace(/^(\d{2})(\d)/, '($1) $2');
+  value = value.replace(/(\d{5})(\d)/, '$1-$2');
+  input.value = value.substring(0, 15);
+}
+
+// Fechar modal ao clicar fora
+window.onclick = function(event) {
+  if (event.target.classList.contains('modal')) {
+    event.target.classList.remove('active');
+  }
+}
+
+// Iniciar
+window.onload = init;
+</script>
+</body>
+</html>
