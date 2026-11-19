@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContábilPro - Gestão de Rotinas Contábeis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1e3a5f',
+            secondary: '#2563eb',
+            accent: '#f59e0b',
+            success: '#10b981',
+            danger: '#ef4444',
+            warning: '#f59e0b'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    .sidebar-item { transition: all 0.2s; }
+    .sidebar-item:hover, .sidebar-item.active { background: rgba(255,255,255,0.12); }
+    .kanban-column { min-height: 450px; max-height: calc(100vh - 220px); overflow-y: auto; }
+    .task-card { transition: transform 0.2s, box-shadow 0.2s; cursor: grab; }
+    .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.12); }
+    .task-card.dragging { opacity: 0.5; cursor: grabbing; }
+    .modal { display: none; }
+    .modal.active { display: flex; }
+    .checkbox-custom { appearance: none; width: 18px; height: 18px; border: 2px solid #d1d5db; border-radius: 4px; cursor: pointer; position: relative; flex-shrink: 0; }
+    .checkbox-custom:checked { background: #2563eb; border-color: #2563eb; }
+    .checkbox-custom:checked::after { content: '✓'; color: white; position: absolute; top: -3px; left: 2px; font-size: 12px; }
+    .progress-bar { transition: width 0.3s ease; }
+    .calendar-day { min-height: 110px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #2563eb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .honorario-doc { font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+    .honorario-header { border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; margin-bottom: 30px; }
+    .honorario-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .honorario-table th, .honorario-table td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
+    .honorario-table th { background: #f1f5f9; }
+    .honorario-table td.text-right { text-align: right; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- Loading Overlay -->
+<div id="loading-screen" class="fixed inset-0 bg-primary z-[60] flex flex-col items-center justify-center text-white">
+  <div class="spinner mb-4"></div>
+  <p class="text-sm">Carregando ContábilPro...</p>
+</div>
+
+<!-- Auth Screen -->
+<div id="auth-screen" class="fixed inset-0 bg-primary z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-4">
+        <i class="fas fa-balance-scale text-3xl text-white"></i>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-800">ContábilPro</h1>
+      <p class="text-sm text-slate-500">Entre com sua conta para acessar</p>
+    </div>
+    <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">E-mail</label>
+        <input type="email" id="auth-email" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Senha</label>
+        <input type="password" id="auth-password" required minlength="6" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <button type="submit" class="w-full py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium transition">Entrar</button>
+      <button type="button" onclick="handleRegister()" class="w-full py-2 border border-slate-300 hover:bg-slate-50 rounded-lg font-medium transition">Criar nova conta</button>
+    </form>
+    <p id="auth-error" class="text-danger text-sm text-center mt-3 hidden"></p>
+  </div>
+</div>
+
+<div id="app-container" class="flex h-screen overflow-hidden hidden">
+  <!-- Sidebar -->
+  <aside class="w-64 bg-primary text-white flex flex-col shadow-xl z-20">
+    <div class="p-5 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center">
+          <i class="fas fa-balance-scale text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">ContábilPro</h1>
+          <p class="text-xs text-slate-300">Rotinas Contábeis</p>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 overflow-y-auto py-3">
+      <div class="px-4 mb-2 text-xs uppercase text-slate-400 font-semibold">Menu</div>
+      <a href="#" onclick="navigate('dashboard')" id="nav-dashboard" class="sidebar-item active flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-chart-pie w-5"></i> Dashboard</a>
+      <a href="#" onclick="navigate('processos')" id="nav-processos" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-list-check w-5"></i> Processos</a>
+      <a href="#" onclick="navigate('kanban')" id="nav-kanban" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-columns w-5"></i> Kanban</a>
+      <a href="#" onclick="navigate('calendario')" id="nav-calendario" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-calendar-alt w-5"></i> Calendário</a>
+      <a href="#" onclick="navigate('empresas')" id="nav-empresas" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-building w-5"></i> Empresas</a>
+      <a href="#" onclick="navigate('equipe')" id="nav-equipe" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-users w-5"></i> Equipe</a>
+      <a href="#" onclick="navigate('honorarios')" id="nav-honorarios" class="sidebar-item flex items-center gap-3 px-4 py-3 text-sm rounded-lg mx-2"><i class="fas fa-coins w-5"></i> Honorários</a>
+      <div class="px-4 mt-5 mb-2 text-xs uppercase text-slate-400 font-semibold">Macros</div>
+      <div id="macros-menu" class="space-y-0.5"></div>
+    </nav>
+    <div class="p-4 border-t border-white/10">
+      <button onclick="openLembretes()" class="w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg hover:bg-white/10 transition mb-2">
+        <i class="fas fa-bell w-5"></i> Lembretes
+        <span id="lembretes-badge" class="ml-auto bg-danger text-white text-xs px-2 py-0.5 rounded-full hidden">0</span>
+      </button>
+      <button onclick="openDataModal()" class="w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg hover:bg-white/10 transition"><i class="fas fa-database w-5"></i> Dados</button>
+      <button onclick="handleLogout()" class="w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg hover:bg-white/10 transition mt-2 text-red-200"><i class="fas fa-sign-out-alt w-5"></i> Sair</button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+      <div>
+        <h2 id="page-title" class="text-2xl font-bold text-slate-800">Dashboard</h2>
+        <p id="page-subtitle" class="text-sm text-slate-500">Visão geral das rotinas do escritório</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="user-email" class="text-sm text-slate-500 hidden md:inline"></span>
+        <button onclick="openTaskModal()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition shadow-lg shadow-blue-500/30"><i class="fas fa-plus mr-2"></i>Nova Tarefa</button>
+      </div>
+    </header>
+    <div id="content" class="flex-1 overflow-y-auto p-6 fade-in"></div>
+  </main>
+</div>
+
+<!-- Task Modal -->
+<div id="task-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
+      <h3 id="task-modal-title" class="text-xl font-bold">Nova Tarefa</h3>
+      <button onclick="closeModal('task')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="task-form" onsubmit="saveTask(event)" class="p-6 space-y-4">
+      <input type="hidden" id="task-id">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Título <span class="text-danger">*</span></label>
+          <input type="text" id="task-title" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Descrição</label>
+          <textarea id="task-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Macro <span class="text-danger">*</span></label>
+          <select id="task-macro" onchange="updateSubprocessosOptions()" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Subgrupo <span class="text-danger">*</span></label>
+          <select id="task-subprocesso" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Empresa</label>
+          <select id="task-cliente" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Responsável <span class="text-danger">*</span></label>
+          <select id="task-responsavel" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Data de Início <span class="text-danger">*</span></label>
+          <input type="date" id="task-start" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Data Fim / Prazo <span class="text-danger">*</span></label>
+          <input type="date" id="task-due" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Prioridade <span class="text-danger">*</span></label>
+          <select id="task-priority" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Baixa">Baixa</option>
+            <option value="Normal" selected>Normal</option>
+            <option value="Alta">Alta</option>
+            <option value="Urgente">Urgente</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Status <span class="text-danger">*</span></label>
+          <select id="task-status" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Não Iniciado">Não Iniciado</option>
+            <option value="Em Andamento">Em Andamento</option>
+            <option value="Aguardando Cliente">Aguardando Cliente</option>
+            <option value="Revisão">Revisão</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Recorrência</label>
+          <select id="task-recurrence" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="Nenhuma">Nenhuma</option>
+            <option value="Mensal">Mensal</option>
+            <option value="Trimestral">Trimestral</option>
+            <option value="Anual">Anual</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo Societário</label>
+          <select id="task-tipo" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="LTDA">LTDA</option>
+            <option value="MEI">MEI</option>
+            <option value="Simples Nacional">Simples Nacional</option>
+            <option value="Lucro Presumido">Lucro Presumido</option>
+            <option value="Lucro Real">Lucro Real</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Observações</label>
+          <textarea id="task-observations" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary"></textarea>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <label class="block text-sm font-medium">Checklist</label>
+          <button type="button" onclick="addChecklistItem()" class="text-sm text-secondary hover:text-blue-700 font-medium"><i class="fas fa-plus mr-1"></i>Adicionar item</button>
+        </div>
+        <div id="task-checklist" class="space-y-2"></div>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('task')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Empresa Modal -->
+<div id="empresa-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 id="empresa-modal-title" class="text-xl font-bold">Nova Empresa</h3>
+      <button onclick="closeModal('empresa')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="empresa-form" onsubmit="saveEmpresa(event)" class="p-6 space-y-4">
+      <input type="hidden" id="empresa-id">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Razão Social <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-nome" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">CNPJ <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-cnpj" required placeholder="00.000.000/0000-00" maxlength="18" oninput="formatCNPJ(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo Societário <span class="text-danger">*</span></label>
+          <select id="empresa-tipo" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+            <option value="LTDA">LTDA</option>
+            <option value="MEI">MEI</option>
+            <option value="Simples Nacional">Simples Nacional</option>
+            <option value="Lucro Presumido">Lucro Presumido</option>
+            <option value="Lucro Real">Lucro Real</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Endereço <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-endereco" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Responsável Legal <span class="text-danger">*</span></label>
+          <input type="text" id="empresa-responsavel-legal" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Valor do Honorário (R$) <span class="text-danger">*</span></label>
+          <input type="number" id="empresa-honorario" required min="0" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        </div>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('empresa')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Equipe Modal -->
+<div id="equipe-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 id="equipe-modal-title" class="text-xl font-bold">Novo Integrante</h3>
+      <button onclick="closeModal('equipe')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="equipe-form" onsubmit="saveEquipe(event)" class="p-6 space-y-4">
+      <input type="hidden" id="equipe-id">
+      <div>
+        <label class="block text-sm font-medium mb-1">Nome <span class="text-danger">*</span></label>
+        <input type="text" id="equipe-nome" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Telefone <span class="text-danger">*</span></label>
+        <input type="tel" id="equipe-telefone" required placeholder="(00) 00000-0000" maxlength="15" oninput="formatPhone(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">E-mail <span class="text-danger">*</span></label>
+        <input type="email" id="equipe-email" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('equipe')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Honorario Modal -->
+<div id="honorario-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Atualizar Honorário</h3>
+      <button onclick="closeModal('honorario')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="honorario-form" onsubmit="saveHonorario(event)" class="p-6 space-y-4">
+      <input type="hidden" id="honorario-empresa-id">
+      <div>
+        <label class="block text-sm font-medium mb-1">Empresa</label>
+        <input type="text" id="honorario-empresa-nome" readonly class="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Competência <span class="text-danger">*</span></label>
+        <input type="text" id="honorario-competencia" required placeholder="MM/AAAA" maxlength="7" oninput="formatCompetencia(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Vencimento</label>
+        <input type="date" id="honorario-vencimento" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Valor do Honorário (R$)</label>
+        <input type="number" id="honorario-valor" required min="0" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Status</label>
+        <select id="honorario-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+          <option value="Pago">Pago</option>
+          <option value="Pendente">Pendente</option>
+          <option value="Atrasado">Atrasado</option>
+        </select>
+      </div>
+      <div>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="honorario-recorrente" class="checkbox-custom" checked>
+          <span class="text-sm">Tarefa recorrente mensal</span>
+        </label>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('honorario')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modelo Honorario Modal -->
+<div id="modelo-honorario-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
+      <h3 class="text-xl font-bold">Modelo de Honorário</h3>
+      <button onclick="closeModal('modelo-honorario')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Beneficiário</label>
+          <input type="text" id="modelo-beneficiario" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Banco</label>
+          <input type="text" id="modelo-banco" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Agência</label>
+          <input type="text" id="modelo-agencia" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Conta</label>
+          <input type="text" id="modelo-conta" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">PIX</label>
+          <input type="text" id="modelo-pix" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+        </div>
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('modelo-honorario')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="button" onclick="saveModeloHonorario()" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar Modelo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Emitir Honorario Modal -->
+<div id="emitir-honorario-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
+      <h3 class="text-xl font-bold">Gerar Documento de Honorário</h3>
+      <button onclick="closeModal('emitir-honorario')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div id="honorario-doc-preview" class="honorario-doc"></div>
+      <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-200 no-print">
+        <button onclick="downloadHonorarioPDF()" class="px-4 py-2 bg-danger hover:bg-red-700 text-white rounded-lg font-medium"><i class="fas fa-file-pdf mr-2"></i>Gerar PDF</button>
+        <button onclick="sendHonorarioEmail()" class="px-4 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium"><i class="fas fa-envelope mr-2"></i>Enviar por E-mail</button>
+        <button onclick="sendHonorarioWhatsApp()" class="px-4 py-2 bg-success hover:bg-emerald-700 text-white rounded-lg font-medium"><i class="fab fa-whatsapp mr-2"></i>Enviar por WhatsApp</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Config Honorarios Modal -->
+<div id="config-honorarios-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Configurar Honorários</h3>
+      <button onclick="closeModal('config-honorarios')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <form id="config-honorarios-form" onsubmit="saveConfigHonorarios(event)" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Dia de vencimento</label>
+        <input type="number" id="config-dia-vencimento" min="1" max="28" required class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Antecedência do lembrete (dias)</label>
+        <input type="number" id="config-lembrete-antecedencia" min="0" max="30" required class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+      </div>
+      <div class="pt-4 border-t border-slate-200 flex justify-end gap-3">
+        <button type="button" onclick="closeModal('config-honorarios')" class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Lembretes Modal -->
+<div id="lembretes-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Lembretes Diários</h3>
+      <button onclick="closeModal('lembretes')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6">
+      <form onsubmit="addLembrete(event)" class="flex gap-2 mb-4">
+        <input type="text" id="lembrete-text" placeholder="Novo lembrete..." required class="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary">
+        <button type="submit" class="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-blue-700"><i class="fas fa-plus"></i></button>
+      </form>
+      <div id="lembretes-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Data Modal -->
+<div id="data-modal" class="modal fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+    <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+      <h3 class="text-xl font-bold">Gerenciar Dados</h3>
+      <button onclick="closeModal('data')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p class="text-sm text-blue-800"><i class="fas fa-info-circle mr-2"></i>Os dados são salvos automaticamente na nuvem (Firebase) enquanto você estiver logado. Use as opções abaixo para backup local.</p>
+      </div>
+      <div>
+        <button onclick="exportData()" class="w-full px-4 py-3 bg-secondary hover:bg-blue-700 text-white rounded-lg font-medium mb-3"><i class="fas fa-download mr-2"></i>Exportar dados (JSON)</button>
+        <label class="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium cursor-pointer flex items-center justify-center">
+          <i class="fas fa-upload mr-2"></i>Importar dados (JSON)
+          <input type="file" id="import-file" accept=".json" onchange="importData(this)" class="hidden">
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+  <span id="toast-message"></span>
+</div>
+
+<script type="module">
+// ============================================
+// FIREBASE IMPORTS E CONFIGURAÇAO
+// ============================================
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBVsFB41rlcjfMonroCpqsM3t50oCNMntM",
+  authDomain: "contabilpro-3d866.firebaseapp.com",
+  projectId: "contabilpro-3d866",
+  storageBucket: "contabilpro-3d866.firebasestorage.app",
+  messagingSenderId: "1060729377126",
+  appId: "1:1060729377126:web:0277dde73ab5b4d8a1f8a7",
+  measurementId: "G-LD0B9TJBJK"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let currentUser = null;
+let dataLoaded = false;
+let unsubscribeData = null;
+
+// ============================================
+// DADOS E CONFIGURACOES
+// ============================================
+const macros = [
+  { id: 1, nome: "Comercial / Captação", icone: "fa-handshake", cor: "bg-blue-500", desc: "Do primeiro contato ao contrato assinado" },
+  { id: 2, nome: "Onboarding do Cliente", icone: "fa-user-plus", cor: "bg-emerald-500", desc: "Cliente novo começa certo, sem documento faltando" },
+  { id: 3, nome: "Fiscal (rotina mensal)", icone: "fa-file-invoice-dollar", cor: "bg-purple-500", desc: "Guias e obrigações do mês no prazo" },
+  { id: 4, nome: "Depto. Pessoal (mensal)", icone: "fa-id-badge", cor: "bg-orange-500", desc: "Folha, eSocial e férias controlados" },
+  { id: 5, nome: "Contábil (mensal/trimestral)", icone: "fa-book", cor: "bg-indigo-500", desc: "Fechamento mensal e demonstrações" },
+  { id: 6, nome: "Obrigações Anuais", icone: "fa-calendar-check", cor: "bg-red-500", desc: "Entregas críticas do calendário" },
+  { id: 7, nome: "Societário / Legalização", icone: "fa-gavel", cor: "bg-teal-500", desc: "Abertura, alteração e baixa de CNPJ" },
+  { id: 8, nome: "Gestão Interna do Escritório", icone: "fa-cogs", cor: "bg-slate-600", desc: "Carteira, faturamento e cobrança" }
+];
+
+const subprocessos = {
+  1: ["1.1 Captação de leads e registro de origem", "1.2 Qualificação (regime, porte, funcionários)", "1.3 Proposta comercial e controle de status", "1.4 Contrato com checklist de cláusulas"],
+  2: ["2.1 Coleta de documentos de abertura", "2.2 Análise da situação cadastral (CNPJ)", "2.3 Definição do escopo de serviços", "2.4 Cadastro no sistema contábil (ERP)", "2.5 Protocolo de comunicação oficial", "2.6 Reunião de kickoff com cliente"],
+  3: ["3.1 Cobrança de documentos ao cliente", "3.2 Conferência e organização de NF-e", "3.3 Escrituração fiscal (SPED Fiscal)", "3.4 Apuração de tributos por regime", "3.5 Geração das guias e controle de envio", "3.6 Obrigações acessórias mensais", "3.7 Conferência de pagamentos das guias"],
+  4: ["4.1 Coleta de eventos variáveis do mês", "4.2 Processamento da folha de pagamento", "4.3 Envio ao eSocial (S-1200, S-1299)", "4.4 DCTFWeb e DARF previdenciária", "4.5 FGTS — GRRF / GFIP", "4.6 Admissões — checklist e eSocial S-2200", "4.7 Demissões — rescisão e S-2299", "4.8 Férias e 13º salário com controle de prazo"],
+  5: ["5.1 Lançamentos contábeis no livro razão", "5.2 Conciliação bancária", "5.3 Fechamento mensal e ajustes", "5.4 DRE, Balanço Patrimonial, Fluxo de Caixa", "5.5 SPED Contábil (ECD) — controle mensal", "5.6 ECF — Escrituração Contábil Fiscal"],
+  6: ["6.1 IRPF de sócios/funcionários — Abril", "6.2 DIRF — Fevereiro", "6.3 RAIS — Março/Abril", "6.4 ECD (SPED Contábil) — Junho", "6.5 ECF — Julho", "6.6 DEFIS (Simples Nacional) — Março", "6.7 Planejamento tributário — Out/Nov"],
+  7: ["7.1 Abertura de empresa — CNPJ, alvará, ISS", "7.2 Alteração contratual (sócios, endereço)", "7.3 Encerramento / Baixa de CNPJ", "7.4 Emissão de certidões (CND, FGTS)", "7.5 Regularização de pendências no CNPJ"],
+  8: ["8.1 Gestão da carteira de clientes", "8.2 Faturamento, NFS-e e régua de cobrança", "8.3 Calendário fiscal consolidado do escritório", "8.4 Gestão de equipe e carga por analista", "8.5 Atendimento ao cliente e controle de SLA", "8.6 Onboarding de novos colaboradores", "8.7 Honorários mensais (separado por cliente cadastrado)"]
+};
+
+let empresas = [];
+let equipe = [];
+let tarefas = [];
+let lembretes = [];
+let honorarios = [];
+let modeloHonorarioConfig = {
+  beneficiario: 'Tamyres de Souza Salermo Gomes Dias',
+  banco: '0260 — Nu Pagamentos S.A. - Instituição de Pagamento',
+  agencia: '0001',
+  conta: '32820364-4',
+  pix: '(32) 99819-6328'
+};
+let configHonorarios = {
+  diaVencimento: 10,
+  lembreteAntecedencia: 3
+};
+let currentEmitHonorario = null;
+
+let currentView = 'dashboard';
+let selectedMacro = null;
+let calendarDate = new Date();
+
+// ============================================
+// AUTENTICACAO
+// ============================================
+window.handleLogin = async function(event) {
+  event.preventDefault();
+  const email = document.getElementById('auth-email').value;
+  const password = document.getElementById('auth-password').value;
+  const errorEl = document.getElementById('auth-error');
+  errorEl.classList.add('hidden');
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    errorEl.textContent = getAuthErrorMessage(error.code);
+    errorEl.classList.remove('hidden');
+  }
+};
+
+window.handleRegister = async function() {
+  const email = document.getElementById('auth-email').value;
+  const password = document.getElementById('auth-password').value;
+  const errorEl = document.getElementById('auth-error');
+  errorEl.classList.add('hidden');
+  if (!email || password.length < 6) {
+    errorEl.textContent = 'Preencha e-mail e senha com pelo menos 6 caracteres.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  try {
+    await createUserWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    errorEl.textContent = getAuthErrorMessage(error.code);
+    errorEl.classList.remove('hidden');
+  }
+};
+
+window.handleLogout = async function() {
+  if (confirm('Deseja sair da sua conta?')) {
+    await signOut(auth);
+  }
+};
+
+function getAuthErrorMessage(code) {
+  const messages = {
+    'auth/invalid-email': 'E-mail inválido.',
+    'auth/user-disabled': 'Conta desativada.',
+    'auth/user-not-found': 'Usuário não encontrado.',
+    'auth/wrong-password': 'Senha incorreta.',
+    'auth/invalid-credential': 'E-mail ou senha incorretos.',
+    'auth/email-already-in-use': 'Este e-mail já está cadastrado.',
+    'auth/weak-password': 'A senha deve ter pelo menos 6 caracteres.'
+  };
+  return messages[code] || 'Erro ao autenticar. Tente novamente.';
+}
+
+function showAuthScreen() {
+  document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('app-container').classList.add('hidden');
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
+  document.getElementById('auth-error').classList.add('hidden');
+}
+
+function showApp() {
+  document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-container').classList.remove('hidden');
+  document.getElementById('user-email').textContent = currentUser?.email || '';
+}
+
+// ============================================
+// INICIALIZACAO
+// ============================================
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    currentUser = user;
+    loadData();
+  } else {
+    currentUser = null;
+    dataLoaded = false;
+    if (unsubscribeData) unsubscribeData();
+    showAuthScreen();
+  }
+});
+
+function getInitialData() {
+  return {
+    empresas: [
+      { id: 1, nome: "Comércio Silva LTDA", cnpj: "12.345.678/0001-90", tipo: "Simples Nacional", endereco: "Rua das Flores, 123 - São Paulo/SP", responsavelLegal: "João Silva", honorario: 1200 },
+      { id: 2, nome: "TechSolutions ME", cnpj: "23.456.789/0001-01", tipo: "Lucro Presumido", endereco: "Av. Paulista, 1000 - São Paulo/SP", responsavelLegal: "Maria Tech", honorario: 2500 },
+      { id: 3, nome: "Construtora Horizonte LTDA", cnpj: "34.567.890/0001-12", tipo: "Lucro Real", endereco: "Rua do Horizonte, 456 - Belo Horizonte/MG", responsavelLegal: "Pedro Horizonte", honorario: 4500 },
+      { id: 4, nome: "Padaria Central MEI", cnpj: "45.678.901/0001-23", tipo: "MEI", endereco: "Rua do Pão, 78 - Curitiba/PR", responsavelLegal: "Ana Souza", honorario: 350 },
+      { id: 5, nome: "Advocacia Mendes", cnpj: "56.789.012/0001-34", tipo: "Simples Nacional", endereco: "Av. dos Advogados, 90 - Rio de Janeiro/RJ", responsavelLegal: "Carlos Mendes", honorario: 1800 }
+    ],
+    equipe: [
+      { id: 1, nome: "Ana Carolina", telefone: "(11) 98765-4321", email: "ana@escritorio.com.br" },
+      { id: 2, nome: "Bruno Lima", telefone: "(11) 98765-4322", email: "bruno@escritorio.com.br" },
+      { id: 3, nome: "Carla Mendes", telefone: "(11) 98765-4323", email: "carla@escritorio.com.br" },
+      { id: 4, nome: "Daniel Souza", telefone: "(11) 98765-4324", email: "daniel@escritorio.com.br" },
+      { id: 5, nome: "Tamyres", telefone: "(11) 98765-4325", email: "tamyres@escritorio.com.br" }
+    ],
+    tarefas: generateInitialTasks(),
+    lembretes: [
+      { id: 1, texto: "Revisar guias de ISS do mês", concluido: false },
+      { id: 2, texto: "Ligar para 3 prospects pendentes", concluido: false },
+      { id: 3, texto: "Atualizar calendário de obrigações anuais", concluido: true }
+    ],
+    honorarios: []
+  };
+}
+
+function generateInitialTasks() {
+  const baseTasks = [
+    { macro: 3, subprocesso: "3.1 Cobrança de documentos ao cliente", titulo: "Cobrança de documentos fiscais - Nov/2026", cliente: 1, responsavel: 1, start: "2026-11-01", due: "2026-11-10", priority: "Alta", status: "Concluído", recurrence: "Nenhuma", tipo: "Simples Nacional", observations: "", checklist: ["Enviar e-mail solicitando notas", "Confirmar recebimento", "Organizar na pasta do cliente"] },
+    { macro: 3, subprocesso: "3.3 Escrituração fiscal (SPED Fiscal)", titulo: "SPED Fiscal - Nov/2026", cliente: 2, responsavel: 1, start: "2026-11-05", due: "2026-11-20", priority: "Urgente", status: "Em Andamento", recurrence: "Mensal", tipo: "Lucro Presumido", observations: "", checklist: ["Importar notas fiscais", "Validar registros", "Transmitir no SPED"] },
+    { macro: 4, subprocesso: "4.2 Processamento da folha de pagamento", titulo: "Folha de pagamento - Nov/2026", cliente: 3, responsavel: 3, start: "2026-11-15", due: "2026-11-25", priority: "Alta", status: "Em Andamento", recurrence: "Mensal", tipo: "Lucro Real", observations: "", checklist: ["Coletar eventos variáveis", "Processar folha", "Enviar holerites para aprovação"] },
+    { macro: 6, subprocesso: "6.1 IRPF de sócios/funcionários — Abril", titulo: "Planejamento IRPF 2027", cliente: 2, responsavel: 2, start: "2026-11-01", due: "2026-12-15", priority: "Normal", status: "Não Iniciado", recurrence: "Anual", tipo: "Lucro Presumido", observations: "", checklist: ["Levantar rendimentos", "Verificar dependentes", "Agendar entrega"] },
+    { macro: 2, subprocesso: "2.1 Coleta de documentos de abertura", titulo: "Onboarding - Construtora Horizonte", cliente: 3, responsavel: 5, start: "2026-11-10", due: "2026-11-30", priority: "Alta", status: "Aguardando Cliente", recurrence: "Nenhuma", tipo: "Lucro Real", observations: "", checklist: ["Contrato social", "Comprovante de endereço", "Documentos dos sócios", "Certificado digital"] },
+    { macro: 5, subprocesso: "5.4 DRE, Balanço Patrimonial, Fluxo de Caixa", titulo: "Fechamento contábil Out/2026", cliente: 1, responsavel: 2, start: "2026-11-05", due: "2026-11-15", priority: "Alta", status: "Revisão", recurrence: "Mensal", tipo: "Simples Nacional", observations: "", checklist: ["Conciliar bancos", "Lançar ajustes", "Gerar DRE", "Gerar Balanço"] },
+    { macro: 1, subprocesso: "1.3 Proposta comercial e controle de status", titulo: "Proposta - Advogados Associados", cliente: null, responsavel: 4, start: "2026-11-15", due: "2026-11-22", priority: "Normal", status: "Em Andamento", recurrence: "Nenhuma", tipo: "Outro", observations: "", checklist: ["Elaborar proposta", "Enviar ao prospect", "Fazer follow-up"] },
+    { macro: 7, subprocesso: "7.2 Alteração contratual (sócios, endereço)", titulo: "Alteração contratual - TechSolutions", cliente: 2, responsavel: 5, start: "2026-11-12", due: "2026-11-28", priority: "Normal", status: "Não Iniciado", recurrence: "Nenhuma", tipo: "Lucro Presumido", observations: "", checklist: ["Nova ata de alteração", "Atualizar junta comercial", "Atualizar CNPJ"] },
+    { macro: 8, subprocesso: "8.2 Faturamento, NFS-e e régua de cobrança", titulo: "Faturamento mensal dos clientes", cliente: null, responsavel: 5, start: "2026-11-20", due: "2026-11-25", priority: "Urgente", status: "Não Iniciado", recurrence: "Mensal", tipo: "Outro", observations: "", checklist: ["Emitir NFS-e", "Enviar boletos", "Verificar inadimplentes"] }
+  ];
+  return baseTasks.map((t, i) => createTask(i + 1, t));
+}
+
+function createTask(id, data) {
+  return {
+    id: id,
+    titulo: data.titulo,
+    descricao: data.descricao || "",
+    macro: parseInt(data.macro),
+    subprocesso: data.subprocesso,
+    cliente: data.cliente ? parseInt(data.cliente) : null,
+    responsavel: parseInt(data.responsavel),
+    start: data.start,
+    due: data.due,
+    priority: data.priority || "Normal",
+    status: data.status || "Não Iniciado",
+    recurrence: data.recurrence || "Nenhuma",
+    tipo: data.tipo || "LTDA",
+    observations: data.observations || "",
+    checklist: (data.checklist || []).map((text, idx) => ({ id: idx + 1, texto: text, concluido: false })),
+    createdAt: data.createdAt || new Date().toISOString()
+  };
+}
+
+// ============================================
+// PERSISTENCIA FIREBASE
+// ============================================
+function loadData() {
+  if (!currentUser) return;
+  const docRef = doc(db, 'users', currentUser.uid, 'data', 'main');
+  unsubscribeData = onSnapshot(docRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      empresas = data.empresas || [];
+      equipe = data.equipe || [];
+      tarefas = data.tarefas || [];
+      lembretes = data.lembretes || [];
+      honorarios = data.honorarios || [];
+      modeloHonorarioConfig = data.modeloHonorarioConfig || {
+        beneficiario: 'Tamyres de Souza Salermo Gomes Dias',
+        banco: '0260 — Nu Pagamentos S.A. - Instituição de Pagamento',
+        agencia: '0001',
+        conta: '32820364-4',
+        pix: '(32) 99819-6328'
+      };
+      configHonorarios = data.configHonorarios || { diaVencimento: 10, lembreteAntecedencia: 3 };
+    } else {
+      resetToInitial();
+    }
+    syncHonorarios();
+    dataLoaded = true;
+    showApp();
+    renderMacrosMenu();
+    navigate('dashboard');
+    updateLembretesBadge();
+  }, (error) => {
+    console.error('Erro ao carregar dados:', error);
+    showToast('Erro ao sincronizar dados. Verifique sua conexão.');
+    showAuthScreen();
+  });
+}
+
+function saveData() {
+  if (!currentUser || !dataLoaded) return;
+  const docRef = doc(db, 'users', currentUser.uid, 'data', 'main');
+  setDoc(docRef, { empresas, equipe, tarefas, lembretes, honorarios, modeloHonorarioConfig, configHonorarios }, { merge: true })
+    .catch(error => {
+      console.error('Erro ao salvar:', error);
+      showToast('Erro ao salvar na nuvem.');
+    });
+}
+
+function syncHonorarios() {
+  const competenciaAtual = getCompetenciaAtual();
+  empresas.forEach(emp => {
+    let h = honorarios.find(ho => ho.empresaId === emp.id && ho.competencia === competenciaAtual);
+    if (!h) {
+      const [mes, ano] = competenciaAtual.split('/').map(Number);
+      const vencimento = getVencimentoHonorario(ano, mes);
+      honorarios.push({
+        id: honorarios.length ? Math.max(...honorarios.map(ho => ho.id)) + 1 : 1,
+        empresaId: emp.id,
+        competencia: competenciaAtual,
+        vencimento: formatDateISO(vencimento),
+        valor: emp.honorario,
+        status: 'Pendente',
+        recorrente: true,
+        checklist: [{ id: 1, texto: 'Feito', concluido: false }, { id: 2, texto: 'Enviado', concluido: false }]
+      });
+    }
+  });
+  verificarHonorariosAtrasados();
+}
+
+function verificarHonorariosAtrasados() {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  honorarios.forEach(h => {
+    if (h.status === 'Pago') return;
+    const [mesComp, anoComp] = (h.competencia || '').split('/').map(Number);
+    if (!mesComp || !anoComp) return;
+    const fimMesComp = new Date(anoComp, mesComp, 0);
+    fimMesComp.setHours(23, 59, 59, 999);
+    if (hoje > fimMesComp) {
+      h.status = 'Atrasado';
+      const proxComp = getProximaCompetencia(h.competencia);
+      const existeProx = honorarios.find(ho => ho.empresaId === h.empresaId && ho.competencia === proxComp);
+      if (!existeProx) {
+        const [proxMes, proxAno] = proxComp.split('/').map(Number);
+        const primeiroDiaUtil = getPrimeiroDiaUtilMes(proxAno, proxMes - 1);
+        honorarios.push({
+          id: honorarios.length ? Math.max(...honorarios.map(ho => ho.id)) + 1 : 1,
+          empresaId: h.empresaId,
+          competencia: proxComp,
+          vencimento: formatDateISO(primeiroDiaUtil),
+          valor: h.valor,
+          status: 'Pendente',
+          recorrente: true,
+          checklist: [{ id: 1, texto: 'Feito', concluido: false }, { id: 2, texto: 'Enviado', concluido: false }]
+        });
+      }
+    }
+  });
+}
+
+function gerarLembreteHonorario(empresaId, competencia, vencimento) {
+  const empresa = empresas.find(e => e.id === empresaId);
+  if (!empresa) return;
+  const antecedencia = (configHonorarios && configHonorarios.lembreteAntecedencia) || 3;
+  const dataLembrete = new Date(vencimento);
+  dataLembrete.setDate(dataLembrete.getDate() - antecedencia);
+  const texto = `Honorário ${empresa.nome} - competência ${competencia} vence em ${formatDate(formatDateISO(vencimento))}`;
+  const jaExiste = lembretes.find(l => l.texto === texto);
+  if (!jaExiste) {
+    lembretes.push({
+      id: lembretes.length ? Math.max(...lembretes.map(l => l.id)) + 1 : 1,
+      texto: texto,
+      concluido: false
+    });
+  }
+}
+
+function resetToInitial() {
+  const initial = getInitialData();
+  empresas = initial.empresas;
+  equipe = initial.equipe;
+  tarefas = initial.tarefas;
+  lembretes = initial.lembretes;
+  honorarios = initial.honorarios;
+  modeloHonorarioConfig = {
+    beneficiario: 'Tamyres de Souza Salermo Gomes Dias',
+    banco: '0260 — Nu Pagamentos S.A. - Instituição de Pagamento',
+    agencia: '0001',
+    conta: '32820364-4',
+    pix: '(32) 99819-6328'
+  };
+  configHonorarios = { diaVencimento: 10, lembreteAntecedencia: 3 };
+  saveData();
+}
+
+window.resetData = function() {
+  if (confirm('Deseja restaurar os dados iniciais? Todos os dados atuais serão perdidos.')) {
+    resetToInitial();
+    renderContent();
+    showToast('Dados restaurados com sucesso');
+  }
+};
+
+window.exportData = function() {
+  const data = JSON.stringify({ empresas, equipe, tarefas, lembretes, honorarios, modeloHonorarioConfig, configHonorarios }, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `contabilpro_backup_${formatDateFile(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Dados exportados com sucesso');
+};
+
+window.importData = function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      empresas = data.empresas || [];
+      equipe = data.equipe || [];
+      tarefas = data.tarefas || [];
+      lembretes = data.lembretes || [];
+      honorarios = data.honorarios || [];
+      modeloHonorarioConfig = data.modeloHonorarioConfig || {
+        beneficiario: 'Tamyres de Souza Salermo Gomes Dias',
+        banco: '0260 — Nu Pagamentos S.A. - Instituição de Pagamento',
+        agencia: '0001',
+        conta: '32820364-4',
+        pix: '(32) 99819-6328'
+      };
+      configHonorarios = data.configHonorarios || { diaVencimento: 10, lembreteAntecedencia: 3 };
+      saveData();
+      renderContent();
+      showToast('Dados importados com sucesso');
+    } catch (err) {
+      alert('Erro ao importar arquivo. Verifique se é um JSON válido.');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+};
+
+// ============================================
+// NAVEGACAO
+// ============================================
+window.navigate = function(view, macroId = null) {
+  currentView = view;
+  selectedMacro = macroId;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById(`nav-${view}`);
+  if (navEl) navEl.classList.add('active');
+  if (macroId) {
+    document.querySelectorAll('[id^="nav-macro-"]').forEach(el => el.classList.remove('active'));
+    document.getElementById(`nav-macro-${macroId}`)?.classList.add('active');
+  }
+  const titles = {
+    dashboard: ["Dashboard", "Visão geral das rotinas do escritório"],
+    processos: [macroId ? macros.find(m => m.id === macroId).nome : "Processos", "Lista de tarefas e checklists"],
+    kanban: ["Kanban", "Visualização por status"],
+    calendario: ["Calendário de Obrigações", "Prazos consolidados"],
+    empresas: ["Empresas", "Carteira de clientes"],
+    equipe: ["Equipe", "Integrantes do escritório"],
+    honorarios: ["Honorários", "Faturamento mensal por cliente"]
+  };
+  document.getElementById('page-title').textContent = titles[view][0];
+  document.getElementById('page-subtitle').textContent = titles[view][1];
+  renderContent();
+};
+
+function renderMacrosMenu() {
+  const menu = document.getElementById('macros-menu');
+  menu.innerHTML = macros.map(m => `
+    <div class="macro-group mx-2 mb-1">
+      <a href="#" onclick="toggleMacroSubmenu(${m.id}); navigate('processos', ${m.id})" id="nav-macro-${m.id}" class="sidebar-item flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white rounded-lg">
+        <span class="w-5 text-center text-xs font-bold">${m.id}</span>
+        <span class="flex-1">${m.nome.split('/')[0]}</span>
+        <i class="fas fa-chevron-down text-xs transition-transform" id="macro-chevron-${m.id}"></i>
+      </a>
+      <div id="macro-submenu-${m.id}" class="macro-submenu hidden pl-4 mt-0.5 space-y-0.5">
+        ${(subprocessos[m.id] || []).map((s, idx) => `
+          <a href="#" onclick="navigate('processos', ${m.id}); setTimeout(() => { const fm = document.getElementById('filter-macro'); const st = document.getElementById('search-text'); if(fm){fm.value='${m.id}';} if(st){st.value='${s.replace(/'/g, "\\'")}';} aplicarFiltrosProcessos(); }, 50)" class="sidebar-item block px-4 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg truncate" title="${s}">
+            ${s}
+          </a>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+window.toggleMacroSubmenu = function(macroId) {
+  const submenu = document.getElementById(`macro-submenu-${macroId}`);
+  const chevron = document.getElementById(`macro-chevron-${macroId}`);
+  if (submenu.classList.contains('hidden')) {
+    submenu.classList.remove('hidden');
+    chevron.classList.add('rotate-180');
+  } else {
+    submenu.classList.add('hidden');
+    chevron.classList.remove('rotate-180');
+  }
+};
+
+function renderContent() {
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+  switch(currentView) {
+    case 'dashboard': renderDashboard(content); break;
+    case 'processos': renderProcessos(content); break;
+    case 'kanban': renderKanban(content); break;
+    case 'calendario': renderCalendario(content); break;
+    case 'empresas': renderEmpresas(content); break;
+    case 'equipe': renderEquipe(content); break;
+    case 'honorarios': renderHonorarios(content); break;
+  }
+}
+</script>
+</body>
+</html>
